@@ -82,6 +82,7 @@ func TestNetworkURL(t *testing.T) {
 }
 
 func TestGET_DevMode_ServesFromDisk(t *testing.T) {
+	// NOTE: os.Chdir mutates process cwd — not safe with t.Parallel().
 	// Create a temp directory matching the internal/static layout.
 	dir := t.TempDir()
 	staticDir := filepath.Join(dir, "internal", "static")

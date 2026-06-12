@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 
 	"github.com/go-chi/chi/v5"
@@ -25,6 +26,7 @@ func NewRouter(cfg cli.Config) chi.Router {
 		assets = static.Assets
 	}
 
+	// TODO: add token auth middleware — token is generated but never enforced
 	r.Get("/", serveFile(assets, "index.html"))
 	r.Get("/files", serveFile(assets, "files.html"))
 
@@ -46,7 +48,12 @@ func serveFile(fsys fs.FS, name string) http.HandlerFunc {
 			return
 		}
 
-		http.ServeContent(w, r, name, stat.ModTime(), f.(io.ReadSeeker))
+		rs, ok := f.(io.ReadSeeker)
+		if !ok {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		http.ServeContent(w, r, name, stat.ModTime(), rs)
 	}
 }
 
@@ -57,9 +64,11 @@ func NetworkURL(cfg cli.Config) string {
 	if host == "0.0.0.0" {
 		host = lookupLANIP()
 	}
-	return fmt.Sprintf("http://%s:%d/?token=%s", host, cfg.Port, cfg.Token)
+	return fmt.Sprintf("http://%s:%d/?token=%s", host, cfg.Port, url.QueryEscape(cfg.Token))
 }
 
+// lookupLANIP returns the first non-loopback IPv4 address.
+// Note: may pick Docker or VPN interfaces on machines with those installed.
 func lookupLANIP() string {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
