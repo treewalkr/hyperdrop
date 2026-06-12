@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -26,9 +27,19 @@ func NewRouter(cfg cli.Config) chi.Router {
 		assets = static.Assets
 	}
 
-	// TODO: add token auth middleware — token is generated but never enforced
+	// Static assets — no auth required
 	r.Get("/", serveFile(assets, "index.html"))
 	r.Get("/files", serveFile(assets, "files.html"))
+
+	// API routes — token auth required
+	r.Route("/api", func(r chi.Router) {
+		r.Use(tokenAuth(cfg.Token))
+		// Placeholder handler — returns 200 OK for any matched route.
+		// Real handlers replace this as issues 04–06 land.
+		r.HandleFunc("/*", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+	})
 
 	return r
 }
@@ -91,4 +102,34 @@ func RunServer(cfg cli.Config, w io.Writer) error {
 	fmt.Fprintf(w, "%s\n", NetworkURL(cfg))
 
 	return http.ListenAndServe(addr, r)
+}
+
+const sessionCookieName = "hyperdrop_session"
+
+// tokenAuth returns middleware that validates token via cookie or ?token= query param.
+func tokenAuth(token string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Check session cookie first.
+			if c, err := r.Cookie(sessionCookieName); err == nil && c.Value == token {
+				next.ServeHTTP(w, r)
+				return
+			}
+			// Check ?token= query param.
+			if t := r.URL.Query().Get("token"); t == token {
+				http.SetCookie(w, &http.Cookie{
+					Name:     sessionCookieName,
+					Value:    token,
+					HttpOnly: true,
+					SameSite: http.SameSiteLaxMode,
+					Path:     "/",
+				})
+				next.ServeHTTP(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
+		})
+	}
 }
