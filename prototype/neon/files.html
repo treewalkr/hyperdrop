@@ -1,0 +1,1451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HYPERDROP — Files</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+  <style>
+    /* ========================================
+       RESET & NEON THEME
+       ======================================== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #050508;
+      --surface: #0a0a10;
+      --surface-hover: #0f0f18;
+      --surface-active: #141420;
+      --border: rgba(0,255,136,0.12);
+      --border-bright: rgba(0,255,136,0.3);
+      --text: #d0d0d0;
+      --text-muted: #505060;
+      --neon-green: #00ff88;
+      --neon-pink: #ff0080;
+      --neon-blue: #00d4ff;
+      --accent: #00ff88;
+      --accent-glow: rgba(0,255,136,0.15);
+      --success: #00ff88;
+      --danger: #ff0080;
+      --warning: #ffdd00;
+      --radius: 3px;
+      --radius-sm: 2px;
+      --header-h: 52px;
+      --mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', 'Consolas', monospace;
+      --sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+      background-image:
+        linear-gradient(rgba(0,255,136,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,255,136,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    /* Scanline overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.03) 2px,
+        rgba(0,0,0,0.03) 4px
+      );
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    button { cursor: pointer; font-family: inherit; }
+
+    /* ========================================
+       HEADER / TOOLBAR
+       ======================================== */
+    .app-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0 1.5rem;
+      height: var(--header-h);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .app-header .brand {
+      font-size: 1.1rem;
+      font-weight: 900;
+      letter-spacing: 0.15em;
+      color: var(--neon-green);
+      text-decoration: none;
+      text-shadow: 0 0 10px rgba(0,255,136,0.5), 0 0 30px rgba(0,255,136,0.2);
+      font-family: var(--mono);
+      flex-shrink: 0;
+    }
+
+    .header-nav {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      flex-shrink: 0;
+    }
+
+    .header-nav a {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.78rem;
+      font-weight: 600;
+      font-family: var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      text-decoration: none;
+      border: 1px solid transparent;
+      transition: all 0.1s;
+    }
+
+    .header-nav a:hover {
+      color: var(--text);
+      background: var(--surface-hover);
+      border-color: var(--border);
+    }
+
+    .header-nav a.active {
+      color: var(--neon-green);
+      border-color: var(--border-bright);
+      background: var(--accent-glow);
+      box-shadow: 0 0 8px rgba(0,255,136,0.15);
+    }
+
+    .header-nav a svg {
+      width: 14px;
+      height: 14px;
+      stroke: currentColor;
+      fill: none;
+    }
+
+    .toolbar-spacer { flex: 1; }
+
+    /* Sort pills */
+    .sort-pills {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      flex-shrink: 0;
+    }
+
+    .sort-pill {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 0.3rem 0.6rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.7rem;
+      font-weight: 600;
+      font-family: var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      transition: all 0.1s;
+      white-space: nowrap;
+    }
+
+    .sort-pill:hover {
+      color: var(--text);
+      border-color: var(--border-bright);
+    }
+
+    .sort-pill.active {
+      color: var(--neon-green);
+      border-color: var(--border-bright);
+      background: var(--accent-glow);
+      box-shadow: 0 0 6px rgba(0,255,136,0.1);
+    }
+
+    /* Search box — terminal style */
+    .search-box {
+      display: flex;
+      align-items: center;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.35rem 0.65rem;
+      gap: 0.4rem;
+      width: 220px;
+      transition: border-color 0.1s, box-shadow 0.1s;
+      flex-shrink: 0;
+    }
+
+    .search-box:focus-within {
+      border-color: var(--border-bright);
+      box-shadow: 0 0 8px rgba(0,255,136,0.08);
+    }
+
+    .search-box .prompt {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--neon-green);
+      text-shadow: 0 0 4px rgba(0,255,136,0.3);
+      flex-shrink: 0;
+      user-select: none;
+    }
+
+    .search-box input {
+      background: none;
+      border: none;
+      outline: none;
+      color: var(--text);
+      font-size: 0.78rem;
+      font-family: var(--mono);
+      width: 100%;
+    }
+
+    .search-box input::placeholder {
+      color: var(--text-muted);
+      font-family: var(--mono);
+    }
+
+    .search-box svg {
+      width: 14px;
+      height: 14px;
+      stroke: var(--text-muted);
+      fill: none;
+      flex-shrink: 0;
+    }
+
+    .stat {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+      flex-shrink: 0;
+      font-family: var(--mono);
+    }
+
+    /* ========================================
+       FILE TYPE BADGE
+       ======================================== */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.6rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      border-radius: var(--radius-sm);
+      padding: 2px 6px;
+      flex-shrink: 0;
+      font-family: var(--mono);
+      border: 1px solid transparent;
+    }
+    .badge.doc  { background: rgba(0,212,255,0.1); color: var(--neon-blue); border-color: rgba(0,212,255,0.2); }
+    .badge.img  { background: rgba(0,255,136,0.1); color: var(--neon-green); border-color: rgba(0,255,136,0.2); }
+    .badge.vid  { background: rgba(255,0,128,0.1); color: var(--neon-pink); border-color: rgba(255,0,128,0.2); }
+    .badge.zip  { background: rgba(255,221,0,0.1); color: var(--warning); border-color: rgba(255,221,0,0.2); }
+    .badge.file { background: rgba(80,80,96,0.15); color: var(--text-muted); border-color: rgba(80,80,96,0.2); }
+
+    /* ========================================
+       ACTION BUTTONS
+       ======================================== */
+    .act-btn {
+      background: none;
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      padding: 0.3rem;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.1s;
+    }
+
+    .act-btn:hover {
+      background: var(--surface-hover);
+      color: var(--neon-green);
+      border-color: var(--border);
+    }
+
+    .act-btn.danger:hover {
+      color: var(--neon-pink);
+      background: rgba(255,0,128,0.08);
+      border-color: rgba(255,0,128,0.2);
+    }
+
+    .act-btn svg { width: 15px; height: 15px; }
+
+    @media (hover: none) {
+      .hover-show { opacity: 1 !important; }
+    }
+
+    /* ========================================
+       VARIANT A — TERMINAL TABLE
+       ======================================== */
+    .variant-a {
+      min-height: calc(100vh - var(--header-h));
+      overflow-x: auto;
+    }
+
+    .variant-a table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 650px;
+    }
+
+    .variant-a thead th {
+      padding: 0.65rem 1.25rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border-bright);
+      position: sticky;
+      top: var(--header-h);
+      background: var(--surface);
+      z-index: 1;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+    }
+
+    .variant-a thead th::before { content: '[ '; color: rgba(0,255,136,0.25); }
+    .variant-a thead th::after { content: ' ]'; color: rgba(0,255,136,0.25); }
+
+    .variant-a tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.1s;
+    }
+
+    .variant-a tbody tr:hover {
+      background: var(--surface-hover);
+    }
+
+    .variant-a tbody tr.selected {
+      background: var(--accent-glow);
+      box-shadow: inset 3px 0 0 var(--neon-green);
+    }
+
+    .variant-a td {
+      padding: 0.6rem 1.25rem;
+      font-size: 0.85rem;
+      vertical-align: middle;
+    }
+
+    .variant-a .col-name {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      min-width: 0;
+    }
+
+    .variant-a .col-name .fname {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-family: var(--mono);
+      font-size: 0.82rem;
+    }
+
+    .variant-a td.size,
+    .variant-a td.date {
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      font-family: var(--mono);
+    }
+
+    .variant-a td.from {
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      font-family: var(--mono);
+    }
+
+    .variant-a .from-dot {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--neon-green);
+      margin-right: 5px;
+      box-shadow: 0 0 4px rgba(0,255,136,0.5);
+    }
+
+    .variant-a td.row-actions {
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+
+    .variant-a tbody tr:hover td.row-actions {
+      opacity: 1;
+    }
+
+    .variant-a td.row-actions {
+      display: flex;
+      gap: 0.25rem;
+      justify-content: flex-end;
+    }
+
+    .variant-a .empty-row td {
+      text-align: center;
+      padding: 4rem 1.5rem;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      font-family: var(--mono);
+    }
+
+    .variant-a .empty-row td::before { content: '// '; color: rgba(0,255,136,0.2); }
+
+    /* Checkbox */
+    .cb {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--neon-green);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    /* ========================================
+       VARIANT B — GRID (HUD DATA PANELS)
+       ======================================== */
+    .variant-b {
+      padding: 1.25rem;
+      min-height: calc(100vh - var(--header-h));
+    }
+
+    .variant-b .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 0.85rem;
+    }
+
+    .variant-b .file-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+      position: relative;
+    }
+
+    /* Corner accent brackets */
+    .variant-b .file-card::before,
+    .variant-b .file-card::after {
+      content: '';
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      border-color: var(--neon-green);
+      border-style: solid;
+      opacity: 0.4;
+      transition: opacity 0.15s;
+      z-index: 2;
+    }
+
+    .variant-b .file-card::before {
+      top: -1px;
+      left: -1px;
+      border-width: 2px 0 0 2px;
+    }
+
+    .variant-b .file-card::after {
+      bottom: -1px;
+      right: -1px;
+      border-width: 0 2px 2px 0;
+    }
+
+    .variant-b .file-card:hover {
+      border-color: var(--border-bright);
+      box-shadow: 0 0 12px rgba(0,255,136,0.08);
+      transform: translateY(-1px);
+    }
+
+    .variant-b .file-card:hover::before,
+    .variant-b .file-card:hover::after {
+      opacity: 0.8;
+    }
+
+    .variant-b .file-card.selected {
+      border-color: var(--border-bright);
+      background: var(--accent-glow);
+      box-shadow: 0 0 15px rgba(0,255,136,0.12);
+    }
+
+    .variant-b .file-card .corner-tr,
+    .variant-b .file-card .corner-bl {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      border-color: var(--neon-green);
+      border-style: solid;
+      opacity: 0.4;
+      transition: opacity 0.15s;
+      z-index: 2;
+    }
+
+    .variant-b .file-card .corner-tr {
+      top: -1px;
+      right: -1px;
+      border-width: 2px 2px 0 0;
+    }
+
+    .variant-b .file-card .corner-bl {
+      bottom: -1px;
+      left: -1px;
+      border-width: 0 0 2px 2px;
+    }
+
+    .variant-b .file-card:hover .corner-tr,
+    .variant-b .file-card:hover .corner-bl,
+    .variant-b .file-card.selected .corner-tr,
+    .variant-b .file-card.selected .corner-bl {
+      opacity: 0.8;
+    }
+
+    .variant-b .file-card .preview {
+      height: 100px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.6rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      position: relative;
+      font-family: var(--mono);
+    }
+
+    .preview.doc  { background: rgba(0,212,255,0.06); color: var(--neon-blue); }
+    .preview.img  { background: rgba(0,255,136,0.06); color: var(--neon-green); }
+    .preview.vid  { background: rgba(255,0,128,0.06); color: var(--neon-pink); }
+    .preview.zip  { background: rgba(255,221,0,0.06); color: var(--warning); }
+    .preview.file { background: rgba(80,80,96,0.08); color: var(--text-muted); }
+
+    .preview .from-tag {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      font-size: 0.6rem;
+      background: rgba(0,0,0,0.6);
+      padding: 2px 6px;
+      border-radius: var(--radius-sm);
+      font-weight: 500;
+      color: var(--text-muted);
+      font-family: var(--mono);
+      border: 1px solid rgba(0,255,136,0.08);
+    }
+
+    .preview .cb-wrap {
+      position: absolute;
+      top: 6px;
+      left: 6px;
+    }
+
+    .preview .cb-wrap .cb { width: 16px; height: 16px; }
+
+    .variant-b .file-card .card-actions {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      background: rgba(5,5,8,0.85);
+      opacity: 0;
+      transition: opacity 0.15s;
+      border-top: 1px solid var(--border);
+    }
+
+    .variant-b .file-card:hover .card-actions { opacity: 1; }
+
+    .variant-b .file-card .card-actions button {
+      flex: 1;
+      background: none;
+      border: none;
+      color: var(--text);
+      padding: 0.4rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.1s, color 0.1s;
+    }
+
+    .variant-b .file-card .card-actions button:hover {
+      background: rgba(0,255,136,0.06);
+    }
+
+    .variant-b .file-card .card-actions button.danger:hover {
+      color: var(--neon-pink);
+      background: rgba(255,0,128,0.06);
+    }
+
+    .variant-b .file-card .card-actions button svg { width: 14px; height: 14px; }
+
+    .variant-b .file-card .card-body {
+      padding: 0.6rem 0.75rem;
+    }
+
+    .variant-b .file-card .card-body .fname {
+      font-size: 0.78rem;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-family: var(--mono);
+    }
+
+    .variant-b .file-card .card-body .meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 0.25rem;
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      font-family: var(--mono);
+    }
+
+    .variant-b .empty-grid {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 4rem 1rem;
+      color: var(--text-muted);
+      font-family: var(--mono);
+      font-size: 0.82rem;
+    }
+
+    .variant-b .empty-grid::before { content: '// '; color: rgba(0,255,136,0.2); }
+
+    /* ========================================
+       VARIANT C — FEED (SYSTEM EVENT LOG)
+       ======================================== */
+    .variant-c {
+      max-width: 660px;
+      margin: 0 auto;
+      padding: 1.25rem;
+      min-height: calc(100vh - var(--header-h));
+    }
+
+    .variant-c .date-divider {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin: 1.25rem 0 0.75rem;
+    }
+
+    .variant-c .date-divider::before,
+    .variant-c .date-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    .variant-c .date-divider span {
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: var(--neon-green);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      white-space: nowrap;
+      font-family: var(--mono);
+      text-shadow: 0 0 6px rgba(0,255,136,0.3);
+    }
+
+    .variant-c .feed-item {
+      display: flex;
+      gap: 0.85rem;
+      padding: 0.85rem;
+      border-radius: var(--radius);
+      border: 1px solid transparent;
+      transition: background 0.1s, border-color 0.1s;
+    }
+
+    .variant-c .feed-item:hover {
+      background: var(--surface);
+      border-color: var(--border);
+    }
+
+    .variant-c .feed-item .avatar {
+      width: 34px;
+      height: 34px;
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.55rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      flex-shrink: 0;
+      font-family: var(--mono);
+    }
+
+    .variant-c .feed-item .feed-body { flex: 1; min-width: 0; }
+
+    .variant-c .feed-item .feed-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.4rem;
+    }
+
+    .variant-c .feed-item .sender {
+      font-size: 0.82rem;
+      font-weight: 600;
+      font-family: var(--mono);
+    }
+
+    .variant-c .feed-item .feed-time {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      font-family: var(--mono);
+    }
+
+    .variant-c .feed-item .feed-time::before { content: '['; color: rgba(0,255,136,0.25); }
+    .variant-c .feed-item .feed-time::after { content: ']'; color: rgba(0,255,136,0.25); }
+
+    .variant-c .feed-item .file-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.45rem 0.65rem;
+      max-width: 100%;
+      transition: border-color 0.1s;
+    }
+
+    .variant-c .feed-item:hover .file-chip {
+      border-color: var(--border-bright);
+    }
+
+    .variant-c .feed-item .file-chip .chip-icon {
+      font-size: 0.55rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      width: 26px;
+      height: 26px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-family: var(--mono);
+      border: 1px solid transparent;
+    }
+
+    .chip-icon.doc  { background: rgba(0,212,255,0.1); color: var(--neon-blue); border-color: rgba(0,212,255,0.2); }
+    .chip-icon.img  { background: rgba(0,255,136,0.1); color: var(--neon-green); border-color: rgba(0,255,136,0.2); }
+    .chip-icon.vid  { background: rgba(255,0,128,0.1); color: var(--neon-pink); border-color: rgba(255,0,128,0.2); }
+    .chip-icon.zip  { background: rgba(255,221,0,0.1); color: var(--warning); border-color: rgba(255,221,0,0.2); }
+    .chip-icon.file { background: rgba(80,80,96,0.15); color: var(--text-muted); border-color: rgba(80,80,96,0.2); }
+
+    .variant-c .feed-item .file-chip .chip-info { min-width: 0; }
+
+    .variant-c .feed-item .file-chip .chip-name {
+      font-size: 0.8rem;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-family: var(--mono);
+    }
+
+    .variant-c .feed-item .file-chip .chip-meta {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      font-family: var(--mono);
+    }
+
+    .variant-c .feed-item .feed-actions {
+      display: flex;
+      gap: 0.25rem;
+      align-self: center;
+      flex-shrink: 0;
+    }
+
+    .variant-c .empty-feed {
+      text-align: center;
+      padding: 4rem 1rem;
+      color: var(--text-muted);
+      font-family: var(--mono);
+      font-size: 0.82rem;
+    }
+
+    .variant-c .empty-feed::before { content: '// '; color: rgba(0,255,136,0.2); }
+
+    /* ========================================
+       TOAST
+       ======================================== */
+    .toast-container {
+      position: fixed;
+      top: calc(var(--header-h) + 1rem);
+      right: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      z-index: 9999;
+      pointer-events: none;
+    }
+
+    .toast {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.6rem 1rem;
+      font-size: 0.78rem;
+      font-family: var(--mono);
+      color: var(--text);
+      box-shadow: 0 0 15px rgba(0,0,0,0.5), 0 0 5px rgba(0,255,136,0.05);
+      pointer-events: auto;
+      animation: toast-in 0.15s ease;
+      max-width: 340px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .toast::before {
+      font-weight: 600;
+      margin-right: 0.5rem;
+    }
+
+    .toast.success { border-left: 2px solid var(--success); }
+    .toast.success::before { content: '[OK]'; color: var(--success); }
+    .toast.error   { border-left: 2px solid var(--danger); }
+    .toast.error::before { content: '[ERR]'; color: var(--danger); }
+    .toast.info    { border-left: 2px solid var(--neon-blue); }
+    .toast.info::before { content: '[SYS]'; color: var(--neon-blue); }
+
+    .toast.out { animation: toast-out 0.1s ease forwards; }
+
+    @keyframes toast-in  { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: none; } }
+    @keyframes toast-out { to { opacity: 0; transform: translateX(20px); } }
+
+    /* ========================================
+       CONFIRM MODAL
+       ======================================== */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 10000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.open { display: flex; }
+
+    .modal-box {
+      background: var(--surface);
+      border: 1px solid var(--border-bright);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      max-width: 380px;
+      width: 90%;
+      box-shadow: 0 0 30px rgba(0,0,0,0.5), 0 0 15px rgba(0,255,136,0.08);
+    }
+
+    .modal-box h3 {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      font-family: var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .modal-box p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 1.25rem;
+      line-height: 1.5;
+    }
+
+    .modal-box .fname {
+      color: var(--text);
+      font-weight: 500;
+      font-family: var(--mono);
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+    }
+
+    .modal-actions button {
+      padding: 0.4rem 1rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.78rem;
+      font-weight: 500;
+      font-family: var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border: 1px solid var(--border);
+      background: none;
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.1s;
+    }
+
+    .modal-actions button:hover {
+      background: var(--surface-hover);
+      border-color: var(--border-bright);
+    }
+
+    .modal-actions .btn-danger {
+      background: rgba(255,0,128,0.15);
+      border-color: rgba(255,0,128,0.3);
+      color: var(--neon-pink);
+    }
+
+    .modal-actions .btn-danger:hover {
+      background: rgba(255,0,128,0.25);
+      border-color: rgba(255,0,128,0.5);
+      box-shadow: 0 0 10px rgba(255,0,128,0.15);
+    }
+
+    /* ========================================
+       FLOATING SWITCHER
+       ======================================== */
+    .prototype-switcher {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--surface);
+      border: 1px solid var(--border-bright);
+      border-radius: 999px;
+      padding: 0.35rem 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.78rem;
+      z-index: 9998;
+      box-shadow: 0 0 20px rgba(0,0,0,0.5), 0 0 8px rgba(0,255,136,0.08);
+      user-select: none;
+      font-family: var(--mono);
+    }
+
+    .prototype-switcher button {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+      font-family: var(--mono);
+      transition: all 0.1s;
+    }
+
+    .prototype-switcher button:hover {
+      background: var(--surface-hover);
+      border-color: var(--neon-green);
+      color: var(--neon-green);
+      box-shadow: 0 0 8px rgba(0,255,136,0.15);
+    }
+
+    .prototype-switcher .label {
+      color: var(--text);
+      font-weight: 600;
+      min-width: 160px;
+      text-align: center;
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+    }
+
+    .prototype-switcher .label small {
+      display: block;
+      color: var(--text-muted);
+      font-weight: 400;
+      font-size: 0.65rem;
+      margin-top: 1px;
+    }
+
+    /* ========================================
+       RESPONSIVE
+       ======================================== */
+    @media (max-width: 768px) {
+      .app-header { padding: 0 0.75rem; gap: 0.5rem; }
+      .search-box { width: 140px; }
+      .sort-pills { display: none; }
+      .stat { display: none; }
+      .header-nav a span { display: none; }
+
+      .variant-b { padding: 0.75rem; }
+      .variant-b .grid { grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); }
+
+      .variant-c { padding: 0.75rem; }
+
+      .toast-container { right: 0.75rem; left: 0.75rem; }
+      .toast { max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============================
+       HEADER
+       ============================ -->
+  <header class="app-header">
+    <a href="index.html" class="brand">HYPERDROP</a>
+    <nav class="header-nav">
+      <a href="index.html" title="Upload files">
+        <svg stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+        <span>SEND</span>
+      </a>
+      <a href="files.html" class="active" title="Manage files">
+        <svg stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
+        <span>FILES</span>
+      </a>
+    </nav>
+    <div class="toolbar-spacer"></div>
+    <div class="sort-pills" id="sort-pills">
+      <button class="sort-pill active" data-sort="date">NEWT</button>
+      <button class="sort-pill" data-sort="name">NAME</button>
+      <button class="sort-pill" data-sort="size">SIZE</button>
+    </div>
+    <div class="search-box">
+      <span class="prompt">&gt;</span>
+      <input type="text" placeholder="search files..." id="search-input">
+    </div>
+    <span class="stat" id="stat-label"></span>
+  </header>
+
+  <!-- ============================
+       VARIANT A — TERMINAL TABLE
+       ============================ -->
+  <div class="variant-a" id="variant-a" style="display:none">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:32px"><input type="checkbox" class="cb" id="select-all" aria-label="Select all"></th>
+          <th>Name</th>
+          <th>Size</th>
+          <th>Received</th>
+          <th>From</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="table-body"></tbody>
+    </table>
+  </div>
+
+  <!-- ============================
+       VARIANT B — GRID (HUD PANELS)
+       ============================ -->
+  <div class="variant-b" id="variant-b" style="display:none">
+    <div class="grid" id="grid-body"></div>
+  </div>
+
+  <!-- ============================
+       VARIANT C — FEED (EVENT LOG)
+       ============================ -->
+  <div class="variant-c" id="variant-c" style="display:none">
+    <div id="feed-body"></div>
+  </div>
+
+  <!-- ============================
+       CONFIRM MODAL
+       ============================ -->
+  <div class="modal-overlay" id="confirm-modal">
+    <div class="modal-box">
+      <h3 id="confirm-title">DELETE FILE?</h3>
+      <p id="confirm-body">This cannot be undone.</p>
+      <div class="modal-actions">
+        <button id="confirm-cancel">CANCEL</button>
+        <button class="btn-danger" id="confirm-ok">DELETE</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================
+       TOASTS
+       ============================ -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- ============================
+       SWITCHER
+       ============================ -->
+  <div class="prototype-switcher">
+    <button id="prev-btn" title="Previous variant">&#x25C0;</button>
+    <div class="label" id="switcher-label">A — Terminal<small>?variant=A</small></div>
+    <button id="next-btn" title="Next variant">&#x25B6;</button>
+  </div>
+
+  <script>
+    // ============================
+    // Icons
+    // ============================
+    const DL  = '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12M12 16.5V3"/></svg>';
+    const DEL = '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>';
+
+    // ============================
+    // Toast
+    // ============================
+    function toast(msg, type = 'info') {
+      const el = document.createElement('div');
+      el.className = `toast ${type}`;
+      el.textContent = msg;
+      document.getElementById('toast-container').appendChild(el);
+      setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 150); }, 2500);
+    }
+
+    // ============================
+    // Confirm Modal
+    // ============================
+    let confirmResolve = null;
+
+    function confirm(title, body) {
+      return new Promise(resolve => {
+        confirmResolve = resolve;
+        document.getElementById('confirm-title').textContent = title;
+        document.getElementById('confirm-body').innerHTML = body;
+        document.getElementById('confirm-modal').classList.add('open');
+      });
+    }
+
+    document.getElementById('confirm-cancel').addEventListener('click', () => {
+      document.getElementById('confirm-modal').classList.remove('open');
+      if (confirmResolve) { confirmResolve(false); confirmResolve = null; }
+    });
+
+    document.getElementById('confirm-ok').addEventListener('click', () => {
+      document.getElementById('confirm-modal').classList.remove('open');
+      if (confirmResolve) { confirmResolve(true); confirmResolve = null; }
+    });
+
+    document.getElementById('confirm-modal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) {
+        e.currentTarget.classList.remove('open');
+        if (confirmResolve) { confirmResolve(false); confirmResolve = null; }
+      }
+    });
+
+    // ============================
+    // Variant Switcher
+    // ============================
+    const VARIANTS = [
+      { key: 'A', name: 'Terminal', desc: 'Terminal data table' },
+      { key: 'B', name: 'Grid',     desc: 'HUD data panels' },
+      { key: 'C', name: 'Feed',     desc: 'System event log' },
+    ];
+
+    const params = new URLSearchParams(window.location.search);
+    let currentIdx = VARIANTS.findIndex(v => v.key === (params.get('variant') || 'A'));
+    if (currentIdx === -1) currentIdx = 0;
+
+    function showVariant(idx) {
+      currentIdx = idx;
+      const v = VARIANTS[idx];
+      document.querySelectorAll('[id^="variant-"]').forEach(el => el.style.display = 'none');
+      document.getElementById(`variant-${v.key.toLowerCase()}`).style.display = '';
+      document.getElementById('switcher-label').innerHTML = `${v.key} — ${v.name}<small>?variant=${v.key}</small>`;
+      const url = new URL(window.location);
+      url.searchParams.set('variant', v.key);
+      history.replaceState(null, '', url);
+      render();
+    }
+
+    document.getElementById('prev-btn').addEventListener('click', () => showVariant((currentIdx - 1 + VARIANTS.length) % VARIANTS.length));
+    document.getElementById('next-btn').addEventListener('click', () => showVariant((currentIdx + 1) % VARIANTS.length));
+
+    document.addEventListener('keydown', e => {
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
+      if (e.key === 'ArrowLeft') { e.preventDefault(); showVariant((currentIdx - 1 + VARIANTS.length) % VARIANTS.length); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); showVariant((currentIdx + 1) % VARIANTS.length); }
+      if (e.key === 'Escape') {
+        const m = document.getElementById('confirm-modal');
+        if (m.classList.contains('open')) { m.classList.remove('open'); if (confirmResolve) { confirmResolve(false); confirmResolve = null; } }
+      }
+    });
+
+    // ============================
+    // Mock Data — all 12 files
+    // ============================
+    const MOCK_FILES = [
+      { id: 1,  name: 'project-wireframes.fig',    size: 14_827_648,    ext: 'fig', cat: 'doc', from: "Raka's Mac",  date: new Date(2026, 5, 12, 14, 32) },
+      { id: 2,  name: 'vacation-photo-beach.jpg',   size: 4_210_048,     ext: 'jpg', cat: 'img', from: 'iPhone 15',   date: new Date(2026, 5, 12, 13, 15) },
+      { id: 3,  name: 'quarterly-report-Q2.pdf',    size: 2_340_000,     ext: 'pdf', cat: 'doc', from: 'ThinkPad X1', date: new Date(2026, 5, 12, 11, 5) },
+      { id: 4,  name: 'interview-raw.mp4',          size: 589_250_560,   ext: 'mp4', cat: 'vid', from: 'iPhone 15',   date: new Date(2026, 5, 12, 10, 42) },
+      { id: 5,  name: 'app-icon-v3.png',            size: 186_400,       ext: 'png', cat: 'img', from: "Raka's Mac",  date: new Date(2026, 5, 12, 9, 18) },
+      { id: 6,  name: 'backup-june.zip',            size: 1_073_741_824, ext: 'zip', cat: 'zip', from: 'ThinkPad X1', date: new Date(2026, 5, 11, 22, 30) },
+      { id: 7,  name: 'notes-meeting-standup.md',   size: 3_200,         ext: 'md',  cat: 'doc', from: "Raka's Mac",  date: new Date(2026, 5, 11, 18, 5) },
+      { id: 8,  name: 'screenshot-error.png',       size: 340_800,       ext: 'png', cat: 'img', from: 'Galaxy S24',  date: new Date(2026, 5, 11, 16, 12) },
+      { id: 9,  name: 'dataset-export.csv',         size: 48_900_000,    ext: 'csv', cat: 'doc', from: 'ThinkPad X1', date: new Date(2026, 5, 11, 14, 40) },
+      { id: 10, name: 'demo-recording.mov',         size: 124_560_000,   ext: 'mov', cat: 'vid', from: 'iPad Air',    date: new Date(2026, 5, 11, 11, 0) },
+      { id: 11, name: 'fonts-bundle.zip',           size: 22_400_000,    ext: 'zip', cat: 'zip', from: "Raka's Mac",  date: new Date(2026, 5, 10, 20, 15) },
+      { id: 12, name: 'cat-meme.gif',               size: 5_200_000,     ext: 'gif', cat: 'img', from: 'iPhone 15',   date: new Date(2026, 5, 10, 15, 30) },
+    ];
+
+    let files = [...MOCK_FILES];
+    let selectedIds = new Set();
+    let searchQuery = '';
+    let sortKey = 'date';
+    let sortDir = -1;
+
+    // ============================
+    // Helpers
+    // ============================
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+      if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+      return (bytes / 1073741824).toFixed(2) + ' GB';
+    }
+
+    function relativeTime(date) {
+      const now = new Date();
+      const diff = now - date;
+      const mins = Math.floor(diff / 60000);
+      const hours = Math.floor(mins / 60);
+      const days = Math.floor(hours / 24);
+      if (mins < 1) return 'just now';
+      if (mins < 60) return `${mins}m ago`;
+      if (hours < 24) return `${hours}h ago`;
+      if (days === 1) return 'yesterday';
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+
+    function formatDate(date) {
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    function formatTimeShort(date) {
+      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function formatTimestamp(date) {
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
+        ' ' + date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    }
+
+    function getFiltered() {
+      let f = files;
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        f = f.filter(file =>
+          file.name.toLowerCase().includes(q) ||
+          file.ext.toLowerCase().includes(q) ||
+          file.from.toLowerCase().includes(q)
+        );
+      }
+      return [...f].sort((a, b) => {
+        if (sortKey === 'name') return sortDir * a.name.localeCompare(b.name);
+        if (sortKey === 'size') return sortDir * (a.size - b.size);
+        if (sortKey === 'date') return sortDir * (a.date - b.date);
+        return 0;
+      });
+    }
+
+    async function deleteFile(id) {
+      const f = files.find(x => x.id === id);
+      if (!f) return;
+      const ok = await confirm('DELETE FILE?', `Delete <span class="fname">${f.name}</span>? This cannot be undone.`);
+      if (!ok) return;
+      files = files.filter(x => x.id !== id);
+      selectedIds.delete(id);
+      render();
+      toast(`Deleted ${f.name}`, 'info');
+    }
+
+    function downloadFile(id) {
+      const f = files.find(x => x.id === id);
+      if (f) toast(`Downloaded ${f.name}`, 'success');
+    }
+
+    function toggleSelect(id) {
+      if (selectedIds.has(id)) selectedIds.delete(id); else selectedIds.add(id);
+      render();
+    }
+
+    // ============================
+    // Render
+    // ============================
+    function render() {
+      const filtered = getFiltered();
+
+      document.getElementById('stat-label').textContent =
+        `${filtered.length} file${filtered.length !== 1 ? 's' : ''} · ${formatSize(filtered.reduce((s, f) => s + f.size, 0))}`;
+
+      const v = VARIANTS[currentIdx].key;
+      if (v === 'A') renderTable(filtered);
+      if (v === 'B') renderGrid(filtered);
+      if (v === 'C') renderFeed(filtered);
+
+      // Select-all checkbox state
+      const sa = document.getElementById('select-all');
+      if (sa) {
+        sa.checked = filtered.length > 0 && filtered.every(f => selectedIds.has(f.id));
+        sa.indeterminate = filtered.some(f => selectedIds.has(f.id)) && !sa.checked;
+      }
+    }
+
+    // -- Variant A: Terminal Table --
+    function renderTable(list) {
+      const tbody = document.getElementById('table-body');
+      if (!list.length) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="6">no files found</td></tr>';
+        return;
+      }
+      tbody.innerHTML = list.map(f => `
+        <tr class="${selectedIds.has(f.id) ? 'selected' : ''}">
+          <td><input type="checkbox" class="cb" ${selectedIds.has(f.id) ? 'checked' : ''} onchange="toggleSelect(${f.id})" aria-label="Select ${f.name}"></td>
+          <td>
+            <div class="col-name">
+              <span class="badge ${f.cat}">${f.ext}</span>
+              <span class="fname" title="${f.name}">${f.name}</span>
+            </div>
+          </td>
+          <td class="size">${formatSize(f.size)}</td>
+          <td class="date">${relativeTime(f.date)}</td>
+          <td class="from"><span class="from-dot"></span>${f.from}</td>
+          <td class="row-actions">
+            <button class="act-btn" onclick="downloadFile(${f.id})" title="Download" aria-label="Download">${DL}</button>
+            <button class="act-btn danger" onclick="deleteFile(${f.id})" title="Delete" aria-label="Delete">${DEL}</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    // -- Variant B: Grid (HUD Panels) --
+    function renderGrid(list) {
+      const grid = document.getElementById('grid-body');
+      if (!list.length) {
+        grid.innerHTML = '<div class="empty-grid">no files found</div>';
+        return;
+      }
+      grid.innerHTML = list.map(f => `
+        <div class="file-card ${selectedIds.has(f.id) ? 'selected' : ''}">
+          <span class="corner-tr"></span>
+          <span class="corner-bl"></span>
+          <div class="preview ${f.cat}">
+            ${f.ext}
+            <span class="from-tag">${f.from}</span>
+            <span class="cb-wrap"><input type="checkbox" class="cb" ${selectedIds.has(f.id) ? 'checked' : ''} onclick="event.stopPropagation();toggleSelect(${f.id})" aria-label="Select ${f.name}"></span>
+          </div>
+          <div class="card-actions">
+            <button onclick="downloadFile(${f.id})" title="Download">${DL}</button>
+            <button class="danger" onclick="deleteFile(${f.id})" title="Delete">${DEL}</button>
+          </div>
+          <div class="card-body">
+            <div class="fname" title="${f.name}">${f.name}</div>
+            <div class="meta">
+              <span>${formatSize(f.size)}</span>
+              <span>${relativeTime(f.date)}</span>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // -- Variant C: Feed (System Event Log) --
+    function renderFeed(list) {
+      const feed = document.getElementById('feed-body');
+      if (!list.length) {
+        feed.innerHTML = '<div class="empty-feed">no files found</div>';
+        return;
+      }
+
+      const groups = {};
+      list.forEach(f => {
+        const key = formatDate(f.date);
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(f);
+      });
+
+      let html = '';
+      for (const [date, items] of Object.entries(groups)) {
+        html += `<div class="date-divider"><span>${date}</span></div>`;
+        items.forEach(f => {
+          const initials = f.from.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+          html += `
+            <div class="feed-item">
+              <div class="avatar">${initials}</div>
+              <div class="feed-body">
+                <div class="feed-header">
+                  <span class="sender">${f.from}</span>
+                  <span class="feed-time">${formatTimestamp(f.date)}</span>
+                </div>
+                <div class="file-chip">
+                  <div class="chip-icon ${f.cat}">${f.ext}</div>
+                  <div class="chip-info">
+                    <div class="chip-name">${f.name}</div>
+                    <div class="chip-meta">${formatSize(f.size)}</div>
+                  </div>
+                </div>
+              </div>
+              <div class="feed-actions">
+                <button class="act-btn" onclick="downloadFile(${f.id})" title="Download" aria-label="Download">${DL}</button>
+                <button class="act-btn danger" onclick="deleteFile(${f.id})" title="Delete" aria-label="Delete">${DEL}</button>
+              </div>
+            </div>
+          `;
+        });
+      }
+      feed.innerHTML = html;
+    }
+
+    // ============================
+    // Sort Pills
+    // ============================
+    document.querySelectorAll('.sort-pill').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.dataset.sort;
+        if (sortKey === key) {
+          sortDir *= -1;
+        } else {
+          sortKey = key;
+          sortDir = -1;
+        }
+        document.querySelectorAll('.sort-pill').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        // Update label
+        const labels = { date: 'NEWT', name: 'NAME', size: 'SIZE' };
+        btn.textContent = sortDir === -1 ? labels[key] : (key === 'date' ? 'OLDT' : labels[key] + ' ^');
+        render();
+      });
+    });
+
+    // ============================
+    // Select All
+    // ============================
+    document.getElementById('select-all')?.addEventListener('change', e => {
+      const filtered = getFiltered();
+      if (e.target.checked) {
+        filtered.forEach(f => selectedIds.add(f.id));
+      } else {
+        selectedIds.clear();
+      }
+      render();
+    });
+
+    // ============================
+    // Search
+    // ============================
+    document.getElementById('search-input').addEventListener('input', e => {
+      searchQuery = e.target.value.trim();
+      render();
+    });
+
+    // Boot
+    showVariant(currentIdx);
+  </script>
+</body>
+</html>

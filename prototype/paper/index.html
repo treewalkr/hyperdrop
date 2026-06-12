@@ -1,0 +1,1244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HyperDrop — Send Files</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📎</text></svg>">
+  <style>
+    /* ========================================
+       RESET & THEME — Paper (Light Minimal)
+       ======================================== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f7f5f0;
+      --surface: #ffffff;
+      --surface-hover: #faf9f6;
+      --border: #e8e4dd;
+      --border-light: #f0ece5;
+      --text: #1a1a2e;
+      --text-secondary: #4a4a5a;
+      --text-muted: #9a9aaa;
+      --accent: #d94f3b;
+      --accent-light: rgba(217,79,59,0.08);
+      --accent-glow: rgba(217,79,59,0.15);
+      --success: #2d9f6f;
+      --danger: #d94f3b;
+      --warning: #d4920a;
+      --radius: 10px;
+      --radius-sm: 8px;
+      --header-h: 56px;
+      --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03);
+      --shadow-card-hover: 0 4px 12px rgba(0,0,0,0.06);
+      --shadow-float: 0 8px 30px rgba(0,0,0,0.08);
+    }
+
+    body {
+      font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ========================================
+       HEADER
+       ======================================== */
+    .app-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 2rem;
+      height: var(--header-h);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .app-header .brand {
+      font-size: 1.15rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: var(--text);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 0;
+    }
+
+    .app-header .brand::after {
+      content: '';
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      margin-left: 3px;
+      vertical-align: super;
+    }
+
+    .header-nav {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .header-nav a {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.45rem 0.95rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.88rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-decoration: none;
+      border: 1px solid transparent;
+      transition: all 0.2s ease;
+    }
+
+    .header-nav a:hover {
+      color: var(--text);
+      background: var(--surface-hover);
+      border-color: var(--border-light);
+    }
+
+    .header-nav a.active {
+      color: var(--accent);
+      border-color: var(--border);
+      background: var(--accent-light);
+    }
+
+    .header-nav a svg {
+      width: 16px;
+      height: 16px;
+      stroke: currentColor;
+      fill: none;
+    }
+
+    /* ========================================
+       BODY DRAG-OVER STATE
+       ======================================== */
+    body.drag-active::after {
+      content: '';
+      position: fixed;
+      inset: 12px;
+      background: rgba(217, 79, 59, 0.03);
+      border: 2px dashed var(--accent);
+      border-radius: 16px;
+      z-index: 50;
+      pointer-events: none;
+      animation: pulse-paper 1.2s ease infinite;
+    }
+
+    @keyframes pulse-paper {
+      0%, 100% { border-color: var(--accent); opacity: 1; }
+      50% { border-color: rgba(217,79,59,0.3); opacity: 0.7; }
+    }
+
+    /* ========================================
+       VARIANT A — "ZEN" (Centered, spacious)
+       ======================================== */
+    .variant-a {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: calc(100vh - var(--header-h));
+      padding: 3rem 2rem;
+      gap: 2.5rem;
+    }
+
+    .variant-a .intro {
+      text-align: center;
+      max-width: 440px;
+    }
+
+    .variant-a .intro h2 {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.25;
+      color: var(--text);
+    }
+
+    .variant-a .intro p {
+      color: var(--text-muted);
+      margin-top: 0.65rem;
+      font-size: 1rem;
+      line-height: 1.6;
+    }
+
+    .variant-a .dropzone {
+      width: 100%;
+      max-width: 520px;
+      min-height: 260px;
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      box-shadow: var(--shadow-card);
+      padding: 2.5rem;
+    }
+
+    .variant-a .dropzone:hover,
+    .variant-a .dropzone.dragover {
+      border-color: var(--accent);
+      background: var(--accent-light);
+      box-shadow: var(--shadow-card-hover);
+    }
+
+    .variant-a .dropzone svg {
+      width: 44px;
+      height: 44px;
+      stroke: var(--border);
+      transition: stroke 0.25s;
+      stroke-width: 1.2;
+    }
+
+    .variant-a .dropzone:hover svg,
+    .variant-a .dropzone.dragover svg {
+      stroke: var(--accent);
+    }
+
+    .variant-a .dropzone .label {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    .variant-a .dropzone .browse {
+      color: var(--accent);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    .variant-a .file-list {
+      width: 100%;
+      max-width: 520px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+    }
+
+    .empty-hint {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.88rem;
+      padding: 1.5rem 0;
+      letter-spacing: 0.01em;
+    }
+
+    /* ========================================
+       VARIANT B — "SHELF" (Split panel)
+       ======================================== */
+    .variant-b {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      min-height: calc(100vh - var(--header-h));
+    }
+
+    .variant-b .drop-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+    }
+
+    .variant-b .drop-panel h2 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      margin-bottom: 2rem;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+
+    .variant-b .drop-area {
+      width: 100%;
+      max-width: 320px;
+      min-height: 320px;
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      padding: 2rem;
+    }
+
+    .variant-b .drop-area:hover,
+    .variant-b .drop-area.dragover {
+      border-color: var(--accent);
+      background: var(--accent-light);
+      box-shadow: var(--shadow-card-hover);
+    }
+
+    .variant-b .drop-area svg {
+      width: 40px;
+      height: 40px;
+      stroke: var(--text-muted);
+      fill: none;
+      stroke-width: 1.2;
+    }
+
+    .variant-b .drop-area:hover svg,
+    .variant-b .drop-area.dragover svg {
+      stroke: var(--accent);
+    }
+
+    .variant-b .drop-area .label {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+
+    .variant-b .drop-area .browse {
+      color: var(--accent);
+      font-size: 0.88rem;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    .variant-b .queue-panel {
+      display: flex;
+      flex-direction: column;
+      padding: 2.5rem 2rem;
+      overflow-y: auto;
+    }
+
+    .variant-b .queue-panel h2 {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 1.25rem;
+    }
+
+    .variant-b .file-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+    }
+
+    .variant-b .empty-state {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      font-size: 0.92rem;
+    }
+
+    /* ========================================
+       VARIANT C — "STRIP" (Top strip + grid)
+       ======================================== */
+    .variant-c {
+      display: flex;
+      flex-direction: column;
+      min-height: calc(100vh - var(--header-h));
+    }
+
+    .variant-c .strip {
+      padding: 1.5rem 2rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .variant-c .dropzone {
+      width: 100%;
+      min-height: 72px;
+      border: 2px dashed var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.65rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .variant-c .dropzone:hover,
+    .variant-c .dropzone.dragover {
+      border-color: var(--accent);
+      background: var(--accent-light);
+    }
+
+    .variant-c .dropzone svg {
+      width: 24px;
+      height: 24px;
+      stroke: var(--text-muted);
+      fill: none;
+      stroke-width: 1.3;
+    }
+
+    .variant-c .dropzone:hover svg,
+    .variant-c .dropzone.dragover svg {
+      stroke: var(--accent);
+    }
+
+    .variant-c .dropzone span {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    .variant-c .content {
+      flex: 1;
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .variant-c .section-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+    }
+
+    .variant-c .section-header h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .variant-c .section-header .count {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+
+    .variant-c .file-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 0.65rem;
+    }
+
+    /* ========================================
+       FILE CARD
+       ======================================== */
+    .file-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.9rem 1rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      transition: box-shadow 0.2s ease, border-color 0.2s ease;
+      box-shadow: var(--shadow-card);
+    }
+
+    .file-card:hover {
+      box-shadow: var(--shadow-card-hover);
+      border-color: #ddd8d0;
+    }
+
+    .file-card.state-error {
+      border-color: rgba(217,79,59,0.25);
+      background: rgba(217,79,59,0.02);
+    }
+
+    .file-card .file-icon {
+      width: 38px;
+      height: 38px;
+      min-width: 38px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      flex-shrink: 0;
+    }
+
+    .file-icon.doc  { background: rgba(74,74,90,0.08); color: #4a4a5a; }
+    .file-icon.img  { background: rgba(45,159,111,0.08); color: #2d9f6f; }
+    .file-icon.vid  { background: rgba(217,79,59,0.08); color: #d94f3b; }
+    .file-icon.zip  { background: rgba(212,146,10,0.08); color: #d4920a; }
+    .file-icon.file { background: rgba(154,154,170,0.08); color: #9a9aaa; }
+
+    .file-card .file-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .file-card .file-name {
+      font-size: 0.88rem;
+      font-weight: 500;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+      line-height: 1.4;
+    }
+
+    .file-card .file-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-top: 3px;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      line-height: 1.4;
+    }
+
+    .file-meta .speed { color: var(--accent); font-weight: 500; }
+    .file-meta .done-label { color: var(--success); font-weight: 500; }
+    .file-meta .error-label { color: var(--danger); font-weight: 500; }
+    .file-meta .paused-label { color: var(--warning); font-weight: 500; }
+
+    .file-card .progress-bar {
+      width: 100%;
+      height: 3px;
+      background: var(--border-light);
+      border-radius: 2px;
+      margin-top: 6px;
+      overflow: hidden;
+    }
+
+    .file-card .progress-bar .fill {
+      height: 100%;
+      border-radius: 2px;
+      width: 0%;
+      transition: width 0.15s ease;
+      background: var(--accent);
+    }
+
+    .fill.done   { background: var(--success); }
+    .fill.error  { background: var(--danger); }
+    .fill.paused { background: var(--warning); }
+
+    /* --- Actions --- */
+    .file-card .actions {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      flex-shrink: 0;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+
+    .file-card:hover .actions {
+      opacity: 1;
+    }
+
+    @media (hover: none) {
+      .file-card .actions { opacity: 1 !important; }
+    }
+
+    .act-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 0.35rem;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.15s, background 0.15s;
+    }
+
+    .act-btn:hover {
+      background: var(--surface-hover);
+      color: var(--text);
+    }
+
+    .act-btn.danger:hover {
+      color: var(--danger);
+      background: rgba(217,79,59,0.06);
+    }
+
+    .act-btn svg { width: 16px; height: 16px; }
+
+    /* ========================================
+       TOAST
+       ======================================== */
+    .toast-container {
+      position: fixed;
+      top: calc(var(--header-h) + 1rem);
+      right: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      z-index: 9999;
+      pointer-events: none;
+    }
+
+    .toast {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.7rem 1.1rem;
+      font-size: 0.85rem;
+      color: var(--text);
+      box-shadow: var(--shadow-float);
+      pointer-events: auto;
+      animation: toast-in 0.25s ease;
+      max-width: 340px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      line-height: 1.4;
+    }
+
+    .toast.success { border-left: 3px solid var(--success); }
+    .toast.error   { border-left: 3px solid var(--danger); }
+    .toast.info    { border-left: 3px solid var(--border); }
+
+    .toast.out { animation: toast-out 0.2s ease forwards; }
+
+    @keyframes toast-in  {
+      from { opacity: 0; transform: translateY(-8px); }
+      to   { opacity: 1; transform: none; }
+    }
+    @keyframes toast-out {
+      to { opacity: 0; transform: translateY(-8px); }
+    }
+
+    /* ========================================
+       CONFIRM MODAL
+       ======================================== */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(26,26,46,0.2);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      z-index: 10000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.open { display: flex; }
+
+    .modal-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.75rem;
+      max-width: 400px;
+      width: 90%;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.12);
+    }
+
+    .modal-box h3 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      color: var(--text);
+    }
+
+    .modal-box p {
+      font-size: 0.92rem;
+      color: var(--text-secondary);
+      margin-bottom: 1.5rem;
+      line-height: 1.55;
+    }
+
+    .modal-box .fname {
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+    }
+
+    .modal-actions button {
+      padding: 0.5rem 1.15rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.88rem;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.15s;
+      line-height: 1.4;
+    }
+
+    .modal-actions button:hover {
+      background: var(--surface-hover);
+    }
+
+    .modal-actions .btn-danger {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .modal-actions .btn-danger:hover {
+      background: #c44535;
+      border-color: #c44535;
+    }
+
+    /* ========================================
+       FLOATING SWITCHER
+       ======================================== */
+    .prototype-switcher {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 0.4rem 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.82rem;
+      z-index: 9998;
+      box-shadow: var(--shadow-float);
+      user-select: none;
+    }
+
+    .prototype-switcher button {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.95rem;
+      transition: all 0.15s;
+    }
+
+    .prototype-switcher button:hover {
+      background: var(--surface-hover);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .prototype-switcher .label {
+      color: var(--text);
+      font-weight: 600;
+      min-width: 150px;
+      text-align: center;
+      font-size: 0.82rem;
+    }
+
+    .prototype-switcher .label small {
+      display: block;
+      color: var(--text-muted);
+      font-weight: 400;
+      font-size: 0.72rem;
+      margin-top: 1px;
+    }
+
+    /* ========================================
+       RESPONSIVE
+       ======================================== */
+    @media (max-width: 768px) {
+      .variant-b {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
+      }
+
+      .variant-b .drop-panel {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        padding: 2rem 1.5rem;
+      }
+
+      .variant-b .drop-area {
+        max-width: 260px;
+        min-height: 260px;
+      }
+
+      .variant-b .queue-panel { padding: 1.5rem; }
+
+      .variant-c .strip { padding: 1rem; }
+      .variant-c .content { padding: 1rem; }
+      .variant-c .file-list { grid-template-columns: 1fr; }
+
+      .app-header { padding: 0 1rem; }
+
+      .variant-a { padding: 2rem 1.25rem; gap: 2rem; }
+      .variant-a .intro h2 { font-size: 1.6rem; }
+
+      .toast-container { right: 1rem; left: 1rem; }
+      .toast { max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============================
+       HEADER
+       ============================ -->
+  <header class="app-header">
+    <a href="index.html" class="brand">HyperDrop</a>
+    <nav class="header-nav">
+      <a href="index.html" class="active" title="Upload files">
+        <svg stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+        Send
+      </a>
+      <a href="files.html" title="Manage files">
+        <svg stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
+        Files
+      </a>
+    </nav>
+  </header>
+
+  <!-- ============================
+       VARIANT A — "ZEN"
+       ============================ -->
+  <div class="variant-a" id="variant-a" style="display:none">
+    <div class="intro">
+      <h2>Send files, simply</h2>
+      <p>Drop your files below to transfer them to this device</p>
+    </div>
+    <div class="dropzone" id="dropzone-a">
+      <svg fill="none" stroke-width="1.2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+      </svg>
+      <span class="label">Drag files here or <span class="browse">browse</span></span>
+    </div>
+    <div class="file-list" id="file-list-a"></div>
+  </div>
+
+  <!-- ============================
+       VARIANT B — "SHELF"
+       ============================ -->
+  <div class="variant-b" id="variant-b" style="display:none">
+    <div class="drop-panel">
+      <h2>Add Files</h2>
+      <div class="drop-area" id="dropzone-b">
+        <svg fill="none" stroke-width="1.2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"/>
+        </svg>
+        <span class="label">Drop files here</span>
+        <span class="browse">or browse</span>
+      </div>
+    </div>
+    <div class="queue-panel">
+      <h2>Upload Queue</h2>
+      <div class="file-list" id="file-list-b"></div>
+      <div class="empty-state" id="empty-b">No files in queue</div>
+    </div>
+  </div>
+
+  <!-- ============================
+       VARIANT C — "STRIP"
+       ============================ -->
+  <div class="variant-c" id="variant-c" style="display:none">
+    <div class="strip">
+      <div class="dropzone" id="dropzone-c">
+        <svg fill="none" stroke-width="1.3" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"/>
+        </svg>
+        <span>Drop files here or <span class="browse" style="color:var(--accent);text-decoration:underline;text-underline-offset:2px">browse</span></span>
+      </div>
+    </div>
+    <div class="content">
+      <div class="section-header">
+        <h3>Files</h3>
+        <span class="count" id="file-count-c">0 files</span>
+      </div>
+      <div class="file-list" id="file-list-c"></div>
+    </div>
+  </div>
+
+  <!-- ============================
+       CONFIRM MODAL
+       ============================ -->
+  <div class="modal-overlay" id="confirm-modal">
+    <div class="modal-box">
+      <h3 id="confirm-title">Remove file?</h3>
+      <p id="confirm-body">This cannot be undone.</p>
+      <div class="modal-actions">
+        <button id="confirm-cancel">Cancel</button>
+        <button class="btn-danger" id="confirm-ok">Remove</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================
+       TOASTS
+       ============================ -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- ============================
+       SWITCHER
+       ============================ -->
+  <div class="prototype-switcher">
+    <button id="prev-btn" title="Previous variant" aria-label="Previous variant">&larr;</button>
+    <div class="label" id="switcher-label">A &mdash; Zen<small>?variant=A</small></div>
+    <button id="next-btn" title="Next variant" aria-label="Next variant">&rarr;</button>
+  </div>
+
+  <!-- Hidden file input -->
+  <input type="file" id="file-input" multiple style="display:none">
+
+  <script>
+    // ============================
+    // Icons
+    // ============================
+    const I = {
+      pause:   '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>',
+      play:    '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="6,4 20,12 6,20"/></svg>',
+      x:       '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>',
+      dl:      '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12M12 16.5V3"/></svg>',
+      link:    '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.86-2.54a4.5 4.5 0 00-1.242-7.244l-4.5-4.5a4.5 4.5 0 00-6.364 6.364L4.757 8.96"/></svg>',
+      refresh: '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/></svg>',
+      dots:    '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="18" r="1.5"/></svg>',
+    };
+
+    // ============================
+    // Toast
+    // ============================
+    function toast(msg, type = 'info') {
+      const el = document.createElement('div');
+      el.className = `toast ${type}`;
+      el.textContent = msg;
+      document.getElementById('toast-container').appendChild(el);
+      setTimeout(() => {
+        el.classList.add('out');
+        setTimeout(() => el.remove(), 200);
+      }, 2500);
+    }
+
+    // ============================
+    // Confirm Modal
+    // ============================
+    let confirmResolve = null;
+
+    function confirm(title, body) {
+      return new Promise(resolve => {
+        confirmResolve = resolve;
+        document.getElementById('confirm-title').textContent = title;
+        document.getElementById('confirm-body').innerHTML = body;
+        document.getElementById('confirm-modal').classList.add('open');
+      });
+    }
+
+    document.getElementById('confirm-cancel').addEventListener('click', () => {
+      document.getElementById('confirm-modal').classList.remove('open');
+      if (confirmResolve) { confirmResolve(false); confirmResolve = null; }
+    });
+
+    document.getElementById('confirm-ok').addEventListener('click', () => {
+      document.getElementById('confirm-modal').classList.remove('open');
+      if (confirmResolve) { confirmResolve(true); confirmResolve = null; }
+    });
+
+    document.getElementById('confirm-modal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) {
+        e.currentTarget.classList.remove('open');
+        if (confirmResolve) { confirmResolve(false); confirmResolve = null; }
+      }
+    });
+
+    // ============================
+    // Variant Switcher
+    // ============================
+    const VARIANTS = [
+      { key: 'A', name: 'Zen',   desc: 'Centered, spacious' },
+      { key: 'B', name: 'Shelf', desc: 'Split panel layout' },
+      { key: 'C', name: 'Strip', desc: 'Top strip + grid' },
+    ];
+
+    const params = new URLSearchParams(window.location.search);
+    let currentIdx = VARIANTS.findIndex(v => v.key === (params.get('variant') || 'A'));
+    if (currentIdx === -1) currentIdx = 0;
+
+    function showVariant(idx) {
+      currentIdx = idx;
+      const v = VARIANTS[idx];
+      document.querySelectorAll('[id^="variant-"]').forEach(el => el.style.display = 'none');
+      document.getElementById(`variant-${v.key.toLowerCase()}`).style.display = '';
+      document.getElementById('switcher-label').innerHTML = `${v.key} &mdash; ${v.name}<small>?variant=${v.key}</small>`;
+      const url = new URL(window.location);
+      url.searchParams.set('variant', v.key);
+      history.replaceState(null, '', url);
+      render();
+    }
+
+    document.getElementById('prev-btn').addEventListener('click', () => showVariant((currentIdx - 1 + VARIANTS.length) % VARIANTS.length));
+    document.getElementById('next-btn').addEventListener('click', () => showVariant((currentIdx + 1) % VARIANTS.length));
+
+    document.addEventListener('keydown', e => {
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
+      if (e.key === 'ArrowLeft') { e.preventDefault(); showVariant((currentIdx - 1 + VARIANTS.length) % VARIANTS.length); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); showVariant((currentIdx + 1) % VARIANTS.length); }
+      if (e.key === 'Escape') {
+        const m = document.getElementById('confirm-modal');
+        if (m.classList.contains('open')) { m.classList.remove('open'); if (confirmResolve) { confirmResolve(false); confirmResolve = null; } }
+      }
+    });
+
+    // ============================
+    // File State
+    // ============================
+    let files = [];
+    let idCounter = 0;
+
+    function getExt(name) {
+      const parts = name.split('.');
+      return parts.length > 1 ? parts.pop().toLowerCase() : '';
+    }
+
+    function extCategory(ext) {
+      const docs = ['pdf','doc','docx','txt','md','xls','xlsx','csv','ppt','pptx','rtf','fig'];
+      const imgs = ['png','jpg','jpeg','gif','svg','webp','bmp','ico'];
+      const vids = ['mp4','mov','avi','mkv','webm','flv','wmv'];
+      const zips = ['zip','rar','7z','tar','gz','bz2','xz'];
+      if (docs.includes(ext)) return 'doc';
+      if (imgs.includes(ext)) return 'img';
+      if (vids.includes(ext)) return 'vid';
+      if (zips.includes(ext)) return 'zip';
+      return 'file';
+    }
+
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+      if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+      return (bytes / 1073741824).toFixed(2) + ' GB';
+    }
+
+    function addFiles(fileList) {
+      for (const f of fileList) {
+        const ext = getExt(f.name);
+        const entry = {
+          id: ++idCounter,
+          name: f.name,
+          size: f.size,
+          ext,
+          category: extCategory(ext),
+          progress: 0,
+          status: 'uploading',
+          speed: 0,
+          timer: null,
+        };
+        files.push(entry);
+        simulateUpload(entry);
+      }
+      render();
+      toast(`${fileList.length} file${fileList.length > 1 ? 's' : ''} added`, 'info');
+    }
+
+    async function removeFile(id) {
+      const f = files.find(x => x.id === id);
+      if (!f) return;
+      const ok = await confirm('Remove file?', `Remove <span class="fname">${f.name}</span>? This cannot be undone.`);
+      if (!ok) return;
+      if (f.timer) clearInterval(f.timer);
+      files = files.filter(x => x.id !== id);
+      render();
+      toast(`${f.name} removed`, 'info');
+    }
+
+    function pauseUpload(id) {
+      const f = files.find(x => x.id === id);
+      if (!f || f.status !== 'uploading') return;
+      clearInterval(f.timer);
+      f.timer = null;
+      f.status = 'paused';
+      render();
+      toast(`${f.name} paused`, 'info');
+    }
+
+    function resumeUpload(id) {
+      const f = files.find(x => x.id === id);
+      if (!f || (f.status !== 'paused' && f.status !== 'error')) return;
+      f.status = 'uploading';
+      simulateUpload(f);
+      render();
+      toast(`${f.name} resumed`, 'info');
+    }
+
+    function simulateUpload(entry) {
+      let progress = entry.progress;
+      entry.timer = setInterval(() => {
+        const ramp = progress < 20 ? 0.5 : 1;
+        const slowdown = progress > 85 ? 0.4 : 1;
+        const step = (1.5 + Math.random() * 2) * ramp * slowdown;
+        progress = Math.min(100, progress + step);
+        entry.progress = progress;
+        const baseSpeed = progress < 20 ? 5 + progress * 0.5 : 15;
+        entry.speed = (baseSpeed + Math.random() * 10).toFixed(1);
+
+        if (progress > 30 && progress < 70 && Math.random() < 0.001) {
+          entry.status = 'error';
+          clearInterval(entry.timer);
+          entry.timer = null;
+          render();
+          toast(`${entry.name} failed to upload`, 'error');
+          return;
+        }
+
+        if (progress >= 100) {
+          entry.progress = 100;
+          entry.status = 'done';
+          entry.speed = 0;
+          clearInterval(entry.timer);
+          entry.timer = null;
+          render();
+          toast(`${entry.name} uploaded`, 'success');
+          return;
+        }
+        render();
+      }, 100);
+    }
+
+    // ============================
+    // Render
+    // ============================
+    function fileCardHTML(f) {
+      const label = f.ext || '?';
+      const stateClass = f.status === 'error' ? ' state-error' : '';
+
+      let metaHTML = '';
+      if (f.status === 'uploading') {
+        metaHTML = `${formatSize(f.size)} · <span class="speed">${f.speed} MB/s</span> · ${Math.round(100 - f.progress)}% left`;
+      } else if (f.status === 'paused') {
+        metaHTML = `${formatSize(f.size)} · <span class="paused-label">Paused</span> at ${Math.round(f.progress)}%`;
+      } else if (f.status === 'error') {
+        metaHTML = `${formatSize(f.size)} · <span class="error-label">Failed — tap retry</span>`;
+      } else {
+        metaHTML = `${formatSize(f.size)} · <span class="done-label">Complete</span>`;
+      }
+
+      const fillClass = f.status === 'done' ? 'fill done' : f.status === 'error' ? 'fill error' : f.status === 'paused' ? 'fill paused' : 'fill';
+
+      let actionsHTML = '';
+      if (f.status === 'uploading') {
+        actionsHTML = `
+          <button class="act-btn" onclick="event.stopPropagation();pauseUpload(${f.id})" title="Pause" aria-label="Pause upload">${I.pause}</button>
+          <button class="act-btn danger" onclick="event.stopPropagation();removeFile(${f.id})" title="Cancel" aria-label="Cancel upload">${I.x}</button>
+        `;
+      } else if (f.status === 'paused') {
+        actionsHTML = `
+          <button class="act-btn" onclick="event.stopPropagation();resumeUpload(${f.id})" title="Resume" aria-label="Resume upload">${I.play}</button>
+          <button class="act-btn danger" onclick="event.stopPropagation();removeFile(${f.id})" title="Cancel" aria-label="Cancel upload">${I.x}</button>
+        `;
+      } else if (f.status === 'error') {
+        actionsHTML = `
+          <button class="act-btn" onclick="event.stopPropagation();resumeUpload(${f.id})" title="Retry" aria-label="Retry upload">${I.refresh}</button>
+          <button class="act-btn danger" onclick="event.stopPropagation();removeFile(${f.id})" title="Dismiss" aria-label="Remove">${I.x}</button>
+        `;
+      } else {
+        actionsHTML = `
+          <button class="act-btn" onclick="event.stopPropagation();toast('Downloaded ${f.name}','success')" title="Download" aria-label="Download file">${I.dl}</button>
+          <button class="act-btn" onclick="event.stopPropagation();toast('Link copied','success')" title="Copy link" aria-label="Copy link">${I.link}</button>
+          <button class="act-btn danger" onclick="event.stopPropagation();removeFile(${f.id})" title="Delete" aria-label="Delete file">${I.x}</button>
+        `;
+      }
+
+      return `
+        <div class="file-card${stateClass}" data-id="${f.id}">
+          <div class="file-icon ${f.category}">${label}</div>
+          <div class="file-info">
+            <div class="file-name" title="${f.name}">${f.name}</div>
+            <div class="file-meta">${metaHTML}</div>
+            <div class="progress-bar"><div class="${fillClass}" style="width:${f.progress}%"></div></div>
+          </div>
+          <div class="actions">${actionsHTML}</div>
+        </div>
+      `;
+    }
+
+    function render() {
+      const html = files.map(f => fileCardHTML(f)).join('');
+      const hint = files.length ? '' : '<div class="empty-hint">Files you drop will appear here</div>';
+
+      const listA = document.getElementById('file-list-a');
+      if (listA) listA.innerHTML = html + hint;
+
+      const listB = document.getElementById('file-list-b');
+      const emptyB = document.getElementById('empty-b');
+      if (listB) listB.innerHTML = html;
+      if (emptyB) emptyB.style.display = files.length ? 'none' : '';
+
+      const listC = document.getElementById('file-list-c');
+      const countC = document.getElementById('file-count-c');
+      if (listC) listC.innerHTML = html;
+      if (countC) countC.textContent = `${files.length} file${files.length !== 1 ? 's' : ''}`;
+    }
+
+    // ============================
+    // Drag & Drop
+    // ============================
+    let dragCounter = 0;
+
+    function setupDropzone(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+
+      el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('dragover'); });
+      el.addEventListener('dragleave', e => { e.preventDefault(); el.classList.remove('dragover'); });
+      el.addEventListener('drop', e => {
+        e.preventDefault();
+        el.classList.remove('dragover');
+        if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+      });
+      el.addEventListener('click', () => document.getElementById('file-input').click());
+    }
+
+    document.addEventListener('dragenter', e => {
+      e.preventDefault();
+      dragCounter++;
+      document.body.classList.add('drag-active');
+    });
+
+    document.addEventListener('dragleave', e => {
+      e.preventDefault();
+      dragCounter--;
+      if (dragCounter <= 0) { dragCounter = 0; document.body.classList.remove('drag-active'); }
+    });
+
+    document.addEventListener('dragover', e => e.preventDefault());
+
+    document.addEventListener('drop', e => {
+      e.preventDefault();
+      dragCounter = 0;
+      document.body.classList.remove('drag-active');
+    });
+
+    document.getElementById('file-input').addEventListener('change', e => {
+      if (e.target.files.length) addFiles(e.target.files);
+      e.target.value = '';
+    });
+
+    setupDropzone('dropzone-a');
+    setupDropzone('dropzone-b');
+    setupDropzone('dropzone-c');
+
+    // Boot
+    showVariant(currentIdx);
+  </script>
+</body>
+</html>

@@ -1,0 +1,1449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HYPERDROP — Send Files</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+  <style>
+    /* ========================================
+       RESET & NEON THEME
+       ======================================== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #050508;
+      --surface: #0a0a10;
+      --surface-hover: #0f0f18;
+      --border: rgba(0,255,136,0.12);
+      --border-bright: rgba(0,255,136,0.3);
+      --text: #d0d0d0;
+      --text-muted: #505060;
+      --neon-green: #00ff88;
+      --neon-pink: #ff0080;
+      --neon-blue: #00d4ff;
+      --accent: #00ff88;
+      --accent-glow: rgba(0,255,136,0.15);
+      --success: #00ff88;
+      --danger: #ff0080;
+      --warning: #ffdd00;
+      --radius: 3px;
+      --radius-sm: 2px;
+      --header-h: 52px;
+      --mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', 'Consolas', monospace;
+      --sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+      background-image:
+        linear-gradient(rgba(0,255,136,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,255,136,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    /* Scanline overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.03) 2px,
+        rgba(0,0,0,0.03) 4px
+      );
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    /* ========================================
+       HEADER
+       ======================================== */
+    .app-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 1.5rem;
+      height: var(--header-h);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .app-header .brand {
+      font-size: 1.1rem;
+      font-weight: 900;
+      letter-spacing: 0.15em;
+      color: var(--neon-green);
+      text-decoration: none;
+      text-shadow: 0 0 10px rgba(0,255,136,0.5), 0 0 30px rgba(0,255,136,0.2);
+      font-family: var(--mono);
+    }
+
+    .header-nav {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .header-nav a {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.78rem;
+      font-weight: 600;
+      font-family: var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      text-decoration: none;
+      border: 1px solid transparent;
+      transition: all 0.1s;
+    }
+
+    .header-nav a:hover {
+      color: var(--text);
+      background: var(--surface-hover);
+      border-color: var(--border);
+    }
+
+    .header-nav a.active {
+      color: var(--neon-green);
+      border-color: var(--border-bright);
+      background: var(--accent-glow);
+      box-shadow: 0 0 8px rgba(0,255,136,0.15);
+    }
+
+    .header-nav a svg {
+      width: 14px;
+      height: 14px;
+      stroke: currentColor;
+      fill: none;
+    }
+
+    /* ========================================
+       BODY DRAG-OVER STATE
+       ======================================== */
+    body.drag-active::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: rgba(0,255,136,0.04);
+      border: 2px solid var(--neon-green);
+      z-index: 50;
+      pointer-events: none;
+      animation: neon-pulse-border 1s ease infinite;
+      box-shadow: inset 0 0 60px rgba(0,255,136,0.06);
+    }
+
+    @keyframes neon-pulse-border {
+      0%, 100% { border-color: var(--neon-green); box-shadow: inset 0 0 60px rgba(0,255,136,0.06); }
+      50% { border-color: rgba(0,255,136,0.3); box-shadow: inset 0 0 30px rgba(0,255,136,0.03); }
+    }
+
+    /* ========================================
+       BLINKING CURSOR
+       ======================================== */
+    @keyframes blink {
+      0%, 49% { opacity: 1; }
+      50%, 100% { opacity: 0; }
+    }
+
+    .cursor {
+      display: inline-block;
+      width: 8px;
+      height: 1.1em;
+      background: var(--neon-green);
+      margin-left: 2px;
+      vertical-align: text-bottom;
+      animation: blink 1s step-end infinite;
+      box-shadow: 0 0 6px rgba(0,255,136,0.6);
+    }
+
+    /* ========================================
+       NEON PULSE (idle dropzone border)
+       ======================================== */
+    @keyframes neon-glow-pulse {
+      0%, 100% { box-shadow: 0 0 5px rgba(0,255,136,0.08), inset 0 0 5px rgba(0,255,136,0.02); border-color: rgba(0,255,136,0.15); }
+      50% { box-shadow: 0 0 15px rgba(0,255,136,0.15), inset 0 0 10px rgba(0,255,136,0.04); border-color: rgba(0,255,136,0.3); }
+    }
+
+    /* ========================================
+       PROGRESS SHIMMER
+       ======================================== */
+    @keyframes progress-shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+
+    /* ========================================
+       VARIANT A — TERMINAL
+       ======================================== */
+    .variant-a {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: calc(100vh - var(--header-h));
+      padding: 2rem;
+      gap: 2rem;
+    }
+
+    .variant-a .intro { text-align: center; }
+
+    .variant-a .intro h2 {
+      font-size: 1.8rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      text-shadow: 0 0 20px rgba(0,255,136,0.3);
+    }
+
+    .variant-a .intro p {
+      color: var(--text-muted);
+      margin-top: 0.5rem;
+      font-size: 0.9rem;
+      font-family: var(--mono);
+    }
+
+    /* Terminal window dropzone */
+    .variant-a .terminal-window {
+      width: 100%;
+      max-width: 560px;
+      background: var(--surface);
+      border: 1px solid rgba(0,255,136,0.2);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: 0 0 20px rgba(0,255,136,0.08), 0 4px 30px rgba(0,0,0,0.5);
+      animation: neon-glow-pulse 3s ease infinite;
+    }
+
+    .terminal-titlebar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0.6rem 0.85rem;
+      background: rgba(0,255,136,0.03);
+      border-bottom: 1px solid var(--border);
+      user-select: none;
+    }
+
+    .terminal-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+    .terminal-dot.red { background: #ff5f57; }
+    .terminal-dot.yel { background: #ffbd2e; }
+    .terminal-dot.grn { background: #28c840; }
+
+    .terminal-titlebar .title-text {
+      margin-left: auto;
+      margin-right: auto;
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      letter-spacing: 0.05em;
+    }
+
+    .variant-a .dropzone {
+      width: 100%;
+      min-height: 220px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      cursor: pointer;
+      transition: all 0.1s ease;
+      padding: 1.5rem;
+    }
+
+    .variant-a .dropzone .terminal-prompt {
+      font-family: var(--mono);
+      font-size: 1rem;
+      color: var(--neon-green);
+      text-shadow: 0 0 8px rgba(0,255,136,0.4);
+    }
+
+    .variant-a .dropzone .terminal-sub {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    .variant-a .dropzone .browse {
+      color: var(--neon-blue);
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
+    .variant-a .dropzone.dragover {
+      background: rgba(0,255,136,0.04);
+    }
+
+    .variant-a .dropzone.dragover .terminal-prompt {
+      text-shadow: 0 0 15px rgba(0,255,136,0.7);
+    }
+
+    .variant-a .terminal-window.dragover {
+      border-color: var(--neon-green);
+      box-shadow: 0 0 30px rgba(0,255,136,0.25), 0 0 60px rgba(0,255,136,0.1);
+      animation: none;
+    }
+
+    .variant-a .file-list {
+      width: 100%;
+      max-width: 560px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .empty-hint {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      padding: 1rem 0;
+      font-family: var(--mono);
+    }
+    .empty-hint::before { content: '// '; color: rgba(0,255,136,0.2); }
+
+    /* ========================================
+       VARIANT B — MATRIX (Split Panel)
+       ======================================== */
+    .variant-b {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      min-height: calc(100vh - var(--header-h));
+    }
+
+    .variant-b .drop-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      border-right: 1px solid var(--border);
+      background: var(--surface);
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Matrix rain effect - subtle grid lines */
+    .variant-b .drop-panel::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0,255,136,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,255,136,0.04) 1px, transparent 1px);
+      background-size: 20px 20px;
+      opacity: 0.6;
+    }
+
+    .variant-b .drop-panel h2 {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 1.5rem;
+      font-family: var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--neon-green);
+      text-shadow: 0 0 10px rgba(0,255,136,0.3);
+      position: relative;
+    }
+
+    .variant-b .drop-area {
+      width: 100%;
+      max-width: 300px;
+      aspect-ratio: 1;
+      border: 1px solid rgba(0,255,136,0.2);
+      border-radius: var(--radius);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      cursor: pointer;
+      transition: all 0.1s ease;
+      position: relative;
+      background: rgba(0,255,136,0.02);
+      animation: neon-glow-pulse 3s ease infinite;
+    }
+
+    /* Corner brackets for matrix feel */
+    .variant-b .drop-area::before,
+    .variant-b .drop-area::after {
+      content: '';
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      border-color: var(--neon-green);
+      border-style: solid;
+    }
+    .variant-b .drop-area::before {
+      top: -1px; left: -1px;
+      border-width: 2px 0 0 2px;
+    }
+    .variant-b .drop-area::after {
+      bottom: -1px; right: -1px;
+      border-width: 0 2px 2px 0;
+    }
+
+    .variant-b .drop-area .corner-tr,
+    .variant-b .drop-area .corner-bl {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      border-color: var(--neon-green);
+      border-style: solid;
+    }
+    .variant-b .drop-area .corner-tr {
+      top: -1px; right: -1px;
+      border-width: 2px 2px 0 0;
+    }
+    .variant-b .drop-area .corner-bl {
+      bottom: -1px; left: -1px;
+      border-width: 0 0 2px 2px;
+    }
+
+    .variant-b .drop-area:hover,
+    .variant-b .drop-area.dragover {
+      border-color: var(--neon-green);
+      background: rgba(0,255,136,0.06);
+      box-shadow: 0 0 25px rgba(0,255,136,0.2), 0 0 50px rgba(0,255,136,0.08);
+      animation: none;
+    }
+
+    .variant-b .drop-area svg {
+      width: 36px; height: 36px;
+      stroke: var(--text-muted);
+      fill: none;
+      position: relative;
+    }
+
+    .variant-b .drop-area:hover svg,
+    .variant-b .drop-area.dragover svg {
+      stroke: var(--neon-green);
+      filter: drop-shadow(0 0 6px rgba(0,255,136,0.5));
+    }
+
+    .variant-b .drop-area .label { color: var(--text-muted); font-size: 0.85rem; font-family: var(--mono); position: relative; }
+    .variant-b .drop-area .browse { color: var(--neon-blue); font-size: 0.75rem; font-family: var(--mono); text-decoration: underline; position: relative; }
+
+    .variant-b .queue-panel {
+      display: flex;
+      flex-direction: column;
+      padding: 2rem;
+      overflow-y: auto;
+    }
+
+    .variant-b .queue-panel h2 {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 1rem;
+      font-family: var(--mono);
+    }
+
+    .variant-b .queue-panel h2::before { content: '[ '; color: rgba(0,255,136,0.3); }
+    .variant-b .queue-panel h2::after { content: ' ]'; color: rgba(0,255,136,0.3); }
+
+    .variant-b .file-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .variant-b .empty-state {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      font-family: var(--mono);
+    }
+
+    /* ========================================
+       VARIANT C — HUD (Top Strip + Grid)
+       ======================================== */
+    .variant-c {
+      display: flex;
+      flex-direction: column;
+      min-height: calc(100vh - var(--header-h));
+    }
+
+    .variant-c .strip {
+      padding: 1.5rem 2rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .variant-c .dropzone {
+      width: 100%;
+      min-height: 80px;
+      border: 1px solid rgba(0,255,136,0.15);
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      cursor: pointer;
+      transition: all 0.1s ease;
+      background: rgba(0,255,136,0.02);
+      position: relative;
+      animation: neon-glow-pulse 3s ease infinite;
+    }
+
+    /* HUD corner brackets */
+    .variant-c .dropzone::before,
+    .variant-c .dropzone::after {
+      content: '';
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      border-color: var(--neon-green);
+      border-style: solid;
+    }
+    .variant-c .dropzone::before {
+      top: -1px; left: -1px;
+      border-width: 2px 0 0 2px;
+    }
+    .variant-c .dropzone::after {
+      bottom: -1px; right: -1px;
+      border-width: 0 2px 2px 0;
+    }
+
+    .variant-c .dropzone .corner-tr,
+    .variant-c .dropzone .corner-bl {
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      border-color: var(--neon-green);
+      border-style: solid;
+    }
+    .variant-c .dropzone .corner-tr {
+      top: -1px; right: -1px;
+      border-width: 2px 2px 0 0;
+    }
+    .variant-c .dropzone .corner-bl {
+      bottom: -1px; left: -1px;
+      border-width: 0 0 2px 2px;
+    }
+
+    .variant-c .dropzone:hover,
+    .variant-c .dropzone.dragover {
+      border-color: var(--neon-green);
+      background: rgba(0,255,136,0.05);
+      box-shadow: 0 0 20px rgba(0,255,136,0.15);
+      animation: none;
+    }
+
+    .variant-c .dropzone svg {
+      width: 24px; height: 24px;
+      stroke: var(--text-muted);
+      fill: none;
+    }
+
+    .variant-c .dropzone:hover svg,
+    .variant-c .dropzone.dragover svg {
+      stroke: var(--neon-green);
+      filter: drop-shadow(0 0 5px rgba(0,255,136,0.5));
+    }
+
+    .variant-c .dropzone span { color: var(--text-muted); font-size: 0.82rem; font-family: var(--mono); }
+
+    .variant-c .content {
+      flex: 1;
+      padding: 1.5rem 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .variant-c .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .variant-c .section-header h3 {
+      font-size: 0.82rem;
+      font-weight: 600;
+      font-family: var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+    .variant-c .section-header h3::before { content: '[ '; color: rgba(0,255,136,0.3); }
+    .variant-c .section-header h3::after { content: ' ]'; color: rgba(0,255,136,0.3); }
+
+    .variant-c .section-header .count { font-size: 0.72rem; color: var(--text-muted); font-family: var(--mono); }
+
+    .variant-c .file-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 6px;
+    }
+
+    /* ========================================
+       FILE CARD
+       ======================================== */
+    .file-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.75rem 0.85rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.65rem;
+      transition: background 0.1s, border-color 0.1s, box-shadow 0.1s;
+    }
+
+    .file-card:hover {
+      background: var(--surface-hover);
+      border-color: var(--border-bright);
+      box-shadow: 0 0 12px rgba(0,255,136,0.08);
+    }
+
+    .file-card.state-error {
+      border-color: rgba(255,0,128,0.3);
+      background: rgba(255,0,128,0.04);
+      box-shadow: 0 0 10px rgba(255,0,128,0.08);
+    }
+
+    .file-card .file-icon {
+      width: 34px; height: 34px; min-width: 34px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.6rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      font-family: var(--mono);
+      flex-shrink: 0;
+      overflow: hidden;
+      border: 1px solid transparent;
+    }
+
+    .file-icon.doc  { background: rgba(0,212,255,0.1); color: var(--neon-blue); border-color: rgba(0,212,255,0.2); }
+    .file-icon.img  { background: rgba(0,255,136,0.1); color: var(--neon-green); border-color: rgba(0,255,136,0.2); }
+    .file-icon.vid  { background: rgba(255,0,128,0.1); color: var(--neon-pink); border-color: rgba(255,0,128,0.2); }
+    .file-icon.zip  { background: rgba(255,221,0,0.1); color: var(--warning); border-color: rgba(255,221,0,0.2); }
+    .file-icon.file { background: rgba(80,80,96,0.15); color: var(--text-muted); border-color: rgba(80,80,96,0.2); }
+
+    .file-card .file-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .file-card .file-name {
+      font-size: 0.85rem;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+
+    .file-card .file-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 2px;
+      font-size: 0.7rem;
+      font-family: var(--mono);
+      color: var(--text-muted);
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    .file-meta .speed { color: var(--neon-blue); font-weight: 500; }
+    .file-meta .done-label { color: var(--success); font-weight: 600; }
+    .file-meta .done-label::before { content: '[OK] '; }
+    .file-meta .error-label { color: var(--danger); font-weight: 600; }
+    .file-meta .error-label::before { content: '[ERR] '; }
+    .file-meta .paused-label { color: var(--warning); font-weight: 600; }
+    .file-meta .paused-label::before { content: '[PAUSED] '; }
+
+    .file-card .progress-bar {
+      width: 100%;
+      height: 3px;
+      background: rgba(0,255,136,0.08);
+      border-radius: 1px;
+      margin-top: 5px;
+      overflow: hidden;
+    }
+
+    .file-card .progress-bar .fill {
+      height: 100%;
+      border-radius: 1px;
+      width: 0%;
+      transition: width 0.15s ease;
+      background: var(--neon-green);
+      box-shadow: 0 0 8px rgba(0,255,136,0.5);
+    }
+
+    .fill.done {
+      background: var(--success);
+      box-shadow: 0 0 8px rgba(0,255,136,0.5);
+    }
+    .fill.error {
+      background: var(--danger);
+      box-shadow: 0 0 8px rgba(255,0,128,0.5);
+    }
+    .fill.paused {
+      background: var(--warning);
+      box-shadow: 0 0 8px rgba(255,221,0,0.5);
+    }
+
+    /* Shimmer on active progress */
+    .fill:not(.done):not(.error):not(.paused) {
+      background: linear-gradient(90deg, var(--neon-green) 0%, rgba(0,212,255,0.8) 50%, var(--neon-green) 100%);
+      background-size: 200% 100%;
+      animation: progress-shimmer 1.5s linear infinite;
+      box-shadow: 0 0 10px rgba(0,255,136,0.6);
+    }
+
+    /* --- Actions --- */
+    .file-card .actions {
+      display: flex;
+      align-items: center;
+      gap: 1px;
+      flex-shrink: 0;
+      flex-wrap: nowrap;
+    }
+
+    @media (hover: none) {
+      .file-card .actions { opacity: 1 !important; }
+    }
+
+    .act-btn {
+      background: none;
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 0.3rem;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.1s;
+    }
+
+    .act-btn:hover {
+      background: var(--surface-hover);
+      color: var(--neon-green);
+      border-color: var(--border);
+    }
+    .act-btn.danger:hover {
+      color: var(--neon-pink);
+      background: rgba(255,0,128,0.08);
+      border-color: rgba(255,0,128,0.2);
+    }
+    .act-btn svg { width: 15px; height: 15px; }
+
+    /* ========================================
+       TOAST
+       ======================================== */
+    .toast-container {
+      position: fixed;
+      top: calc(var(--header-h) + 1rem);
+      right: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      z-index: 9999;
+      pointer-events: none;
+    }
+
+    .toast {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.6rem 1rem;
+      font-size: 0.78rem;
+      font-family: var(--mono);
+      color: var(--text);
+      box-shadow: 0 0 15px rgba(0,0,0,0.5), 0 0 5px rgba(0,255,136,0.05);
+      pointer-events: auto;
+      animation: toast-in 0.15s ease;
+      max-width: 340px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .toast::before {
+      font-weight: 600;
+      margin-right: 0.5rem;
+    }
+
+    .toast.success { border-left: 2px solid var(--success); }
+    .toast.success::before { content: '[OK]'; color: var(--success); }
+    .toast.error   { border-left: 2px solid var(--danger); }
+    .toast.error::before { content: '[ERR]'; color: var(--danger); }
+    .toast.info    { border-left: 2px solid var(--neon-blue); }
+    .toast.info::before { content: '[SYS]'; color: var(--neon-blue); }
+
+    .toast.out { animation: toast-out 0.1s ease forwards; }
+
+    @keyframes toast-in  { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: none; } }
+    @keyframes toast-out { to { opacity: 0; transform: translateX(20px); } }
+
+    /* ========================================
+       CONFIRM MODAL
+       ======================================== */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 10000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.open { display: flex; }
+
+    .modal-box {
+      background: var(--surface);
+      border: 1px solid var(--border-bright);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      max-width: 380px;
+      width: 90%;
+      box-shadow: 0 0 30px rgba(0,0,0,0.5), 0 0 15px rgba(0,255,136,0.08);
+    }
+
+    .modal-box h3 {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      font-family: var(--mono);
+    }
+    .modal-box p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 1.25rem;
+      line-height: 1.5;
+    }
+    .modal-box .fname { color: var(--text); font-weight: 500; font-family: var(--mono); }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+    }
+
+    .modal-actions button {
+      padding: 0.4rem 1rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.78rem;
+      font-weight: 500;
+      font-family: var(--mono);
+      border: 1px solid var(--border);
+      background: none;
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.1s;
+    }
+
+    .modal-actions button:hover {
+      background: var(--surface-hover);
+      border-color: var(--border-bright);
+    }
+
+    .modal-actions .btn-danger {
+      background: rgba(255,0,128,0.15);
+      border-color: rgba(255,0,128,0.3);
+      color: var(--neon-pink);
+    }
+
+    .modal-actions .btn-danger:hover {
+      background: rgba(255,0,128,0.25);
+      border-color: rgba(255,0,128,0.5);
+      box-shadow: 0 0 10px rgba(255,0,128,0.15);
+    }
+
+    /* ========================================
+       FLOATING SWITCHER
+       ======================================== */
+    .prototype-switcher {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--surface);
+      border: 1px solid var(--border-bright);
+      border-radius: 999px;
+      padding: 0.35rem 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.78rem;
+      z-index: 9998;
+      box-shadow: 0 0 20px rgba(0,0,0,0.5), 0 0 8px rgba(0,255,136,0.08);
+      user-select: none;
+      font-family: var(--mono);
+    }
+
+    .prototype-switcher button {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+      font-family: var(--mono);
+      transition: all 0.1s;
+    }
+
+    .prototype-switcher button:hover {
+      background: var(--surface-hover);
+      border-color: var(--neon-green);
+      color: var(--neon-green);
+      box-shadow: 0 0 8px rgba(0,255,136,0.15);
+    }
+
+    .prototype-switcher .label {
+      color: var(--text);
+      font-weight: 600;
+      min-width: 160px;
+      text-align: center;
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+    }
+
+    .prototype-switcher .label small {
+      display: block;
+      color: var(--text-muted);
+      font-weight: 400;
+      font-size: 0.65rem;
+      margin-top: 1px;
+    }
+
+    /* ========================================
+       RESPONSIVE
+       ======================================== */
+    @media (max-width: 768px) {
+      .variant-b {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
+      }
+
+      .variant-b .drop-panel {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        padding: 1.5rem;
+      }
+
+      .variant-b .drop-area {
+        max-width: 240px;
+        aspect-ratio: 1;
+      }
+
+      .variant-b .queue-panel { padding: 1.5rem; }
+
+      .variant-c .strip { padding: 1rem; }
+      .variant-c .content { padding: 1rem; }
+      .variant-c .file-list { grid-template-columns: 1fr; }
+
+      .app-header { padding: 0 1rem; }
+      .toast-container { right: 1rem; left: 1rem; }
+      .toast { max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============================
+       HEADER
+       ============================ -->
+  <header class="app-header">
+    <a href="index.html" class="brand">HYPERDROP</a>
+    <nav class="header-nav">
+      <a href="index.html" class="active" title="Upload files">
+        <svg stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+        SEND
+      </a>
+      <a href="files.html" title="Manage files">
+        <svg stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
+        FILES
+      </a>
+    </nav>
+  </header>
+
+  <!-- ============================
+       VARIANT A — TERMINAL
+       ============================ -->
+  <div class="variant-a" id="variant-a" style="display:none">
+    <div class="intro">
+      <h2>Send files to this machine</h2>
+      <p>// drop files below — they'll be saved locally</p>
+    </div>
+    <div class="terminal-window" id="terminal-window-a">
+      <div class="terminal-titlebar">
+        <span class="terminal-dot red"></span>
+        <span class="terminal-dot yel"></span>
+        <span class="terminal-dot grn"></span>
+        <span class="title-text">hyperdrop://upload</span>
+      </div>
+      <div class="dropzone" id="dropzone-a">
+        <div class="terminal-prompt">> DROP FILES HERE<span class="cursor"></span></div>
+        <div class="terminal-sub">or <span class="browse">browse</span> to select</div>
+      </div>
+    </div>
+    <div class="file-list" id="file-list-a"></div>
+  </div>
+
+  <!-- ============================
+       VARIANT B — MATRIX (Split Panel)
+       ============================ -->
+  <div class="variant-b" id="variant-b" style="display:none">
+    <div class="drop-panel">
+      <h2>Upload</h2>
+      <div class="drop-area" id="dropzone-b">
+        <span class="corner-tr"></span>
+        <span class="corner-bl"></span>
+        <svg fill="none" stroke-width="1.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"/>
+        </svg>
+        <span class="label">DROP HERE</span>
+        <span class="browse">or browse files</span>
+      </div>
+    </div>
+    <div class="queue-panel">
+      <h2>Upload Queue</h2>
+      <div class="file-list" id="file-list-b"></div>
+      <div class="empty-state" id="empty-b">// no files in queue</div>
+    </div>
+  </div>
+
+  <!-- ============================
+       VARIANT C — HUD (Top Strip + Grid)
+       ============================ -->
+  <div class="variant-c" id="variant-c" style="display:none">
+    <div class="strip">
+      <div class="dropzone" id="dropzone-c">
+        <span class="corner-tr"></span>
+        <span class="corner-bl"></span>
+        <svg fill="none" stroke-width="1.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"/>
+        </svg>
+        <span>DROP FILES HERE or <span class="browse" style="color:var(--neon-blue);text-decoration:underline">BROWSE</span></span>
+      </div>
+    </div>
+    <div class="content">
+      <div class="section-header">
+        <h3>Files</h3>
+        <span class="count" id="file-count-c">0 files</span>
+      </div>
+      <div class="file-list" id="file-list-c"></div>
+    </div>
+  </div>
+
+  <!-- ============================
+       CONFIRM MODAL
+       ============================ -->
+  <div class="modal-overlay" id="confirm-modal">
+    <div class="modal-box">
+      <h3 id="confirm-title">REMOVE FILE?</h3>
+      <p id="confirm-body">This cannot be undone.</p>
+      <div class="modal-actions">
+        <button id="confirm-cancel">CANCEL</button>
+        <button class="btn-danger" id="confirm-ok">REMOVE</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================
+       TOASTS
+       ============================ -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- ============================
+       SWITCHER
+       ============================ -->
+  <div class="prototype-switcher">
+    <button id="prev-btn" title="Previous variant">&#x25C0;</button>
+    <div class="label" id="switcher-label">A — Terminal<small>?variant=A</small></div>
+    <button id="next-btn" title="Next variant">&#x25B6;</button>
+  </div>
+
+  <!-- Hidden file input -->
+  <input type="file" id="file-input" multiple style="display:none">
+
+  <script>
+    // ============================
+    // Icons
+    // ============================
+    const I = {
+      pause:   '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>',
+      play:    '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="6,4 20,12 6,20"/></svg>',
+      x:       '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>',
+      dl:      '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12M12 16.5V3"/></svg>',
+      link:    '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.86-2.54a4.5 4.5 0 00-1.242-7.244l-4.5-4.5a4.5 4.5 0 00-6.364 6.364L4.757 8.96"/></svg>',
+      refresh: '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/></svg>',
+      dots:    '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="18" r="1.5"/></svg>',
+    };
+
+    // ============================
+    // Toast
+    // ============================
+    function toast(msg, type = 'info') {
+      const el = document.createElement('div');
+      el.className = `toast ${type}`;
+      el.textContent = msg;
+      document.getElementById('toast-container').appendChild(el);
+      setTimeout(() => {
+        el.classList.add('out');
+        setTimeout(() => el.remove(), 150);
+      }, 2500);
+    }
+
+    // ============================
+    // Confirm Modal
+    // ============================
+    let confirmResolve = null;
+
+    function confirm(title, body) {
+      return new Promise(resolve => {
+        confirmResolve = resolve;
+        document.getElementById('confirm-title').textContent = title;
+        document.getElementById('confirm-body').innerHTML = body;
+        document.getElementById('confirm-modal').classList.add('open');
+      });
+    }
+
+    document.getElementById('confirm-cancel').addEventListener('click', () => {
+      document.getElementById('confirm-modal').classList.remove('open');
+      if (confirmResolve) { confirmResolve(false); confirmResolve = null; }
+    });
+
+    document.getElementById('confirm-ok').addEventListener('click', () => {
+      document.getElementById('confirm-modal').classList.remove('open');
+      if (confirmResolve) { confirmResolve(true); confirmResolve = null; }
+    });
+
+    document.getElementById('confirm-modal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) {
+        e.currentTarget.classList.remove('open');
+        if (confirmResolve) { confirmResolve(false); confirmResolve = null; }
+      }
+    });
+
+    // ============================
+    // Variant Switcher
+    // ============================
+    const VARIANTS = [
+      { key: 'A', name: 'Terminal', desc: 'Terminal drop zone' },
+      { key: 'B', name: 'Matrix', desc: 'Drop left, queue right' },
+      { key: 'C', name: 'HUD', desc: 'Top strip + grid' },
+    ];
+
+    const params = new URLSearchParams(window.location.search);
+    let currentIdx = VARIANTS.findIndex(v => v.key === (params.get('variant') || 'A'));
+    if (currentIdx === -1) currentIdx = 0;
+
+    function showVariant(idx) {
+      currentIdx = idx;
+      const v = VARIANTS[idx];
+      document.querySelectorAll('[id^="variant-"]').forEach(el => el.style.display = 'none');
+      document.getElementById(`variant-${v.key.toLowerCase()}`).style.display = '';
+      document.getElementById('switcher-label').innerHTML = `${v.key} — ${v.name}<small>?variant=${v.key}</small>`;
+      const url = new URL(window.location);
+      url.searchParams.set('variant', v.key);
+      history.replaceState(null, '', url);
+      render();
+    }
+
+    document.getElementById('prev-btn').addEventListener('click', () => showVariant((currentIdx - 1 + VARIANTS.length) % VARIANTS.length));
+    document.getElementById('next-btn').addEventListener('click', () => showVariant((currentIdx + 1) % VARIANTS.length));
+
+    document.addEventListener('keydown', e => {
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
+      if (e.key === 'ArrowLeft') { e.preventDefault(); showVariant((currentIdx - 1 + VARIANTS.length) % VARIANTS.length); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); showVariant((currentIdx + 1) % VARIANTS.length); }
+      if (e.key === 'Escape') {
+        const m = document.getElementById('confirm-modal');
+        if (m.classList.contains('open')) { m.classList.remove('open'); if (confirmResolve) { confirmResolve(false); confirmResolve = null; } }
+      }
+    });
+
+    // ============================
+    // File State
+    // ============================
+    let files = [];
+    let idCounter = 0;
+
+    function getExt(name) {
+      const parts = name.split('.');
+      return parts.length > 1 ? parts.pop().toLowerCase() : '';
+    }
+
+    function extCategory(ext) {
+      const docs = ['pdf','doc','docx','txt','md','xls','xlsx','csv','ppt','pptx','rtf','fig'];
+      const imgs = ['png','jpg','jpeg','gif','svg','webp','bmp','ico'];
+      const vids = ['mp4','mov','avi','mkv','webm','flv','wmv'];
+      const zips = ['zip','rar','7z','tar','gz','bz2','xz'];
+      if (docs.includes(ext)) return 'doc';
+      if (imgs.includes(ext)) return 'img';
+      if (vids.includes(ext)) return 'vid';
+      if (zips.includes(ext)) return 'zip';
+      return 'file';
+    }
+
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+      if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+      return (bytes / 1073741824).toFixed(2) + ' GB';
+    }
+
+    function addFiles(fileList) {
+      for (const f of fileList) {
+        const ext = getExt(f.name);
+        const entry = {
+          id: ++idCounter,
+          name: f.name,
+          size: f.size,
+          ext,
+          category: extCategory(ext),
+          progress: 0,
+          status: 'uploading',
+          speed: 0,
+          timer: null,
+        };
+        files.push(entry);
+        simulateUpload(entry);
+      }
+      render();
+      toast(`${fileList.length} file${fileList.length > 1 ? 's' : ''} added`, 'info');
+    }
+
+    async function removeFile(id) {
+      const f = files.find(x => x.id === id);
+      if (!f) return;
+      const ok = await confirm('REMOVE FILE?', `Remove <span class="fname">${f.name}</span>? This cannot be undone.`);
+      if (!ok) return;
+      if (f.timer) clearInterval(f.timer);
+      files = files.filter(x => x.id !== id);
+      render();
+      toast(`${f.name} removed`, 'info');
+    }
+
+    function pauseUpload(id) {
+      const f = files.find(x => x.id === id);
+      if (!f || f.status !== 'uploading') return;
+      clearInterval(f.timer);
+      f.timer = null;
+      f.status = 'paused';
+      render();
+      toast(`${f.name} paused`, 'info');
+    }
+
+    function resumeUpload(id) {
+      const f = files.find(x => x.id === id);
+      if (!f || (f.status !== 'paused' && f.status !== 'error')) return;
+      f.status = 'uploading';
+      simulateUpload(f);
+      render();
+      toast(`${f.name} resumed`, 'info');
+    }
+
+    function simulateUpload(entry) {
+      let progress = entry.progress;
+      entry.timer = setInterval(() => {
+        const ramp = progress < 20 ? 0.5 : 1;
+        const slowdown = progress > 85 ? 0.4 : 1;
+        const step = (1.5 + Math.random() * 2) * ramp * slowdown;
+        progress = Math.min(100, progress + step);
+        entry.progress = progress;
+        const baseSpeed = progress < 20 ? 5 + progress * 0.5 : 15;
+        entry.speed = (baseSpeed + Math.random() * 10).toFixed(1);
+
+        if (progress > 30 && progress < 70 && Math.random() < 0.001) {
+          entry.status = 'error';
+          clearInterval(entry.timer);
+          entry.timer = null;
+          render();
+          toast(`${entry.name} failed to upload`, 'error');
+          return;
+        }
+
+        if (progress >= 100) {
+          entry.progress = 100;
+          entry.status = 'done';
+          entry.speed = 0;
+          clearInterval(entry.timer);
+          entry.timer = null;
+          render();
+          toast(`${entry.name} uploaded`, 'success');
+          return;
+        }
+        render();
+      }, 100);
+    }
+
+    // ============================
+    // Render
+    // ============================
+    function fileCardHTML(f) {
+      const label = f.ext || '?';
+      const stateClass = f.status === 'error' ? ' state-error' : '';
+
+      let metaHTML = '';
+      if (f.status === 'uploading') {
+        metaHTML = `${formatSize(f.size)} · <span class="speed">${f.speed} MB/s</span> · ${Math.round(100 - f.progress)}% left`;
+      } else if (f.status === 'paused') {
+        metaHTML = `${formatSize(f.size)} · <span class="paused-label">Paused</span> @ ${Math.round(f.progress)}%`;
+      } else if (f.status === 'error') {
+        metaHTML = `${formatSize(f.size)} · <span class="error-label">Retry</span>`;
+      } else {
+        metaHTML = `${formatSize(f.size)} · <span class="done-label">Complete</span>`;
+      }
+
+      const fillClass = f.status === 'done' ? 'fill done' : f.status === 'error' ? 'fill error' : f.status === 'paused' ? 'fill paused' : 'fill';
+
+      let actionsHTML = '';
+      if (f.status === 'uploading') {
+        actionsHTML = `
+          <button class="act-btn" onclick="event.stopPropagation();pauseUpload(${f.id})" title="Pause" aria-label="Pause upload">${I.pause}</button>
+          <button class="act-btn danger" onclick="event.stopPropagation();removeFile(${f.id})" title="Cancel" aria-label="Cancel upload">${I.x}</button>
+        `;
+      } else if (f.status === 'paused') {
+        actionsHTML = `
+          <button class="act-btn" onclick="event.stopPropagation();resumeUpload(${f.id})" title="Resume" aria-label="Resume upload">${I.play}</button>
+          <button class="act-btn danger" onclick="event.stopPropagation();removeFile(${f.id})" title="Cancel" aria-label="Cancel upload">${I.x}</button>
+        `;
+      } else if (f.status === 'error') {
+        actionsHTML = `
+          <button class="act-btn" onclick="event.stopPropagation();resumeUpload(${f.id})" title="Retry" aria-label="Retry upload">${I.refresh}</button>
+          <button class="act-btn danger" onclick="event.stopPropagation();removeFile(${f.id})" title="Dismiss" aria-label="Remove">${I.x}</button>
+        `;
+      } else {
+        actionsHTML = `
+          <button class="act-btn" onclick="event.stopPropagation();toast('Downloaded ${f.name}','success')" title="Download" aria-label="Download file">${I.dl}</button>
+          <button class="act-btn" onclick="event.stopPropagation();toast('Link copied','success')" title="Copy link" aria-label="Copy link">${I.link}</button>
+          <button class="act-btn danger" onclick="event.stopPropagation();removeFile(${f.id})" title="Delete" aria-label="Delete file">${I.x}</button>
+        `;
+      }
+
+      return `
+        <div class="file-card${stateClass}" data-id="${f.id}">
+          <div class="file-icon ${f.category}">${label}</div>
+          <div class="file-info">
+            <div class="file-name" title="${f.name}">${f.name}</div>
+            <div class="file-meta">${metaHTML}</div>
+            <div class="progress-bar"><div class="${fillClass}" style="width:${f.progress}%"></div></div>
+          </div>
+          <div class="actions">${actionsHTML}</div>
+        </div>
+      `;
+    }
+
+    function render() {
+      const html = files.map(f => fileCardHTML(f)).join('');
+      const hint = files.length ? '' : '<div class="empty-hint">Files you drop will appear here</div>';
+
+      const listA = document.getElementById('file-list-a');
+      if (listA) listA.innerHTML = html + hint;
+
+      const listB = document.getElementById('file-list-b');
+      const emptyB = document.getElementById('empty-b');
+      if (listB) listB.innerHTML = html;
+      if (emptyB) emptyB.style.display = files.length ? 'none' : '';
+
+      const listC = document.getElementById('file-list-c');
+      const countC = document.getElementById('file-count-c');
+      if (listC) listC.innerHTML = html;
+      if (countC) countC.textContent = `${files.length} file${files.length !== 1 ? 's' : ''}`;
+    }
+
+    // ============================
+    // Drag & Drop
+    // ============================
+    let dragCounter = 0;
+
+    function setupDropzone(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+
+      el.addEventListener('dragover', e => {
+        e.preventDefault();
+        el.classList.add('dragover');
+        // Also add dragover to terminal window parent for variant A
+        const tw = document.getElementById('terminal-window-a');
+        if (tw && el.id === 'dropzone-a') tw.classList.add('dragover');
+      });
+      el.addEventListener('dragleave', e => {
+        e.preventDefault();
+        el.classList.remove('dragover');
+        const tw = document.getElementById('terminal-window-a');
+        if (tw && el.id === 'dropzone-a') tw.classList.remove('dragover');
+      });
+      el.addEventListener('drop', e => {
+        e.preventDefault();
+        el.classList.remove('dragover');
+        const tw = document.getElementById('terminal-window-a');
+        if (tw && el.id === 'dropzone-a') tw.classList.remove('dragover');
+        if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+      });
+      el.addEventListener('click', () => document.getElementById('file-input').click());
+    }
+
+    // Body-level drag state
+    document.addEventListener('dragenter', e => {
+      e.preventDefault();
+      dragCounter++;
+      document.body.classList.add('drag-active');
+    });
+
+    document.addEventListener('dragleave', e => {
+      e.preventDefault();
+      dragCounter--;
+      if (dragCounter <= 0) { dragCounter = 0; document.body.classList.remove('drag-active'); }
+    });
+
+    document.addEventListener('dragover', e => e.preventDefault());
+
+    document.addEventListener('drop', e => {
+      e.preventDefault();
+      dragCounter = 0;
+      document.body.classList.remove('drag-active');
+    });
+
+    document.getElementById('file-input').addEventListener('change', e => {
+      if (e.target.files.length) addFiles(e.target.files);
+      e.target.value = '';
+    });
+
+    setupDropzone('dropzone-a');
+    setupDropzone('dropzone-b');
+    setupDropzone('dropzone-c');
+
+    // Boot
+    showVariant(currentIdx);
+  </script>
+</body>
+</html>

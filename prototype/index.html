@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HyperDrop — Prototype Gallery</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: #08080c;
+      color: #e0e0ee;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .hero {
+      text-align: center;
+      padding: 5rem 2rem 3rem;
+      max-width: 600px;
+    }
+
+    .hero .logo {
+      font-size: 2.5rem;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #ff6b35, #ff1493, #8b5cf6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 0.5rem;
+    }
+
+    .hero .tagline {
+      font-size: 1.1rem;
+      color: #888;
+      line-height: 1.6;
+    }
+
+    .hero .tagline strong {
+      color: #bbb;
+    }
+
+    .versions {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      padding: 1rem 2rem 4rem;
+      max-width: 1200px;
+      width: 100%;
+    }
+
+    .card {
+      position: relative;
+      background: #111118;
+      border: 1px solid #222230;
+      border-radius: 16px;
+      overflow: hidden;
+      transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+      text-decoration: none;
+      color: inherit;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .card:hover {
+      transform: translateY(-4px);
+      border-color: #444;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+    }
+
+    .card .preview {
+      height: 200px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 3rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Aurora preview */
+    .card.aurora .preview {
+      background: #080b1a;
+      color: #a29bfe;
+    }
+    .card.aurora .preview::before {
+      content: '';
+      position: absolute;
+      width: 300px; height: 300px;
+      background: radial-gradient(circle, rgba(124,108,240,0.3), transparent 70%);
+      top: -50%; left: -20%;
+      animation: drift 6s ease-in-out infinite alternate;
+    }
+    .card.aurora .preview::after {
+      content: '';
+      position: absolute;
+      width: 250px; height: 250px;
+      background: radial-gradient(circle, rgba(78,205,196,0.25), transparent 70%);
+      bottom: -40%; right: -10%;
+      animation: drift 8s ease-in-out infinite alternate-reverse;
+    }
+    .card.aurora:hover { border-color: rgba(124,108,240,0.4); box-shadow: 0 12px 40px rgba(124,108,240,0.1); }
+
+    /* Paper preview */
+    .card.paper .preview {
+      background: #f7f5f0;
+      color: #1a1a2e;
+    }
+    .card.paper .preview .dot {
+      position: absolute;
+      top: 1rem; left: 1.5rem;
+      width: 8px; height: 8px;
+      background: #d94f3b;
+      border-radius: 50%;
+    }
+    .card.paper .preview .lines {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      position: relative;
+    }
+    .card.paper .preview .lines span {
+      height: 3px;
+      background: #e8e4dd;
+      border-radius: 2px;
+      width: 120px;
+    }
+    .card.paper .preview .lines span:nth-child(2) { width: 90px; }
+    .card.paper .preview .lines span:nth-child(3) { width: 60px; }
+    .card.paper:hover { border-color: #d94f3b; box-shadow: 0 12px 40px rgba(217,79,59,0.08); }
+
+    /* Neon preview */
+    .card.neon .preview {
+      background: #050508;
+      color: #00ff88;
+      text-shadow: 0 0 20px rgba(0,255,136,0.4);
+      background-image:
+        linear-gradient(rgba(0,255,136,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,255,136,0.03) 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+    .card.neon:hover { border-color: rgba(0,255,136,0.4); box-shadow: 0 12px 40px rgba(0,255,136,0.08); }
+
+    /* Gradient preview */
+    .card.gradient .preview {
+      background: #faf8ff;
+      color: #8b5cf6;
+    }
+    .card.gradient .preview::before {
+      content: '';
+      position: absolute;
+      width: 200px; height: 200px;
+      background: conic-gradient(from 0deg, #ff6b35, #ff1493, #8b5cf6, #ff6b35);
+      border-radius: 50%;
+      opacity: 0.12;
+      animation: spin 8s linear infinite;
+    }
+    .card.gradient:hover { border-color: rgba(139,92,246,0.4); box-shadow: 0 12px 40px rgba(139,92,246,0.1); }
+
+    .card .preview .name {
+      position: relative;
+      z-index: 1;
+    }
+
+    .card .info {
+      padding: 1.25rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .card .info h3 {
+      font-size: 1.1rem;
+      font-weight: 700;
+    }
+
+    .card .info p {
+      font-size: 0.85rem;
+      color: #777;
+      line-height: 1.5;
+    }
+
+    .card .info .tags {
+      display: flex;
+      gap: 0.4rem;
+      margin-top: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .card .info .tag {
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      border: 1px solid #333;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .card.aurora .tag { border-color: rgba(124,108,240,0.3); color: #a29bfe; }
+    .card.paper .tag { border-color: rgba(217,79,59,0.3); color: #e87c6b; }
+    .card.neon .tag { border-color: rgba(0,255,136,0.3); color: #00ff88; }
+    .card.gradient .tag { border-color: rgba(139,92,246,0.3); color: #a78bfa; }
+
+    .footer {
+      padding: 2rem;
+      text-align: center;
+      color: #444;
+      font-size: 0.8rem;
+      border-top: 1px solid #1a1a22;
+      width: 100%;
+    }
+
+    .footer a {
+      color: #666;
+      text-decoration: none;
+    }
+
+    .footer a:hover { color: #aaa; }
+
+    .v0-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 1rem;
+      padding: 0.5rem 1rem;
+      background: #111118;
+      border: 1px solid #222230;
+      border-radius: 8px;
+      color: #888;
+      text-decoration: none;
+      font-size: 0.85rem;
+      transition: border-color 0.2s, color 0.2s;
+    }
+
+    .v0-link:hover { border-color: #444; color: #bbb; }
+
+    @keyframes drift {
+      from { transform: translate(0, 0); }
+      to { transform: translate(30px, -20px); }
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @media (max-width: 640px) {
+      .hero { padding: 3rem 1.5rem 2rem; }
+      .hero .logo { font-size: 2rem; }
+      .versions { padding: 0 1rem 3rem; gap: 1rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="hero">
+    <div class="logo">HyperDrop</div>
+    <p class="tagline">
+      Prototype gallery — <strong>4 visual design directions</strong> for the file transfer experience.
+      Each version has 3 layout variants you can switch between.
+    </p>
+    <a href="v0/index.html" class="v0-link">📂 View original v0 prototype</a>
+  </div>
+
+  <div class="versions">
+    <a href="aurora/index.html" class="card aurora">
+      <div class="preview">
+        <span class="name">Aurora</span>
+      </div>
+      <div class="info">
+        <h3>Aurora</h3>
+        <p>Glassmorphism with frosted panels, animated aurora gradients, and an ethereal dark aesthetic.</p>
+        <div class="tags">
+          <span class="tag">Dark</span>
+          <span class="tag">Glass</span>
+          <span class="tag">Premium</span>
+          <span class="tag" style="border-color:rgba(78,205,196,0.4);color:#4ecdc4">DESIGN.md</span>
+        </div>
+      </div>
+    </a>
+
+    <a href="paper/index.html" class="card paper">
+      <div class="preview">
+        <div class="dot"></div>
+        <div class="lines">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+      <div class="info">
+        <h3>Paper</h3>
+        <p>Light, warm, Japanese-inspired minimalism. Ultra-clean with generous whitespace and subtle shadows.</p>
+        <div class="tags">
+          <span class="tag">Light</span>
+          <span class="tag">Minimal</span>
+          <span class="tag">Warm</span>
+        </div>
+      </div>
+    </a>
+
+    <a href="neon/index.html" class="card neon">
+      <div class="preview">
+        <span class="name">&gt;_</span>
+      </div>
+      <div class="info">
+        <h3>Neon</h3>
+        <p>Cyberpunk terminal aesthetic with neon glows, grid patterns, and a hacker-tool-from-the-future vibe.</p>
+        <div class="tags">
+          <span class="tag">Dark</span>
+          <span class="tag">Neon</span>
+          <span class="tag">Tech</span>
+        </div>
+      </div>
+    </a>
+
+    <a href="gradient/index.html" class="card gradient">
+      <div class="preview">
+        <span class="name">Gradient</span>
+      </div>
+      <div class="info">
+        <h3>Gradient</h3>
+        <p>Modern SaaS style with vibrant gradient accents, animated borders, and a playful creative energy.</p>
+        <div class="tags">
+          <span class="tag">Light</span>
+          <span class="tag">Colorful</span>
+          <span class="tag">Modern</span>
+        </div>
+      </div>
+    </a>
+  </div>
+
+  <div class="footer">
+    HyperDrop Prototypes &middot; <a href="v0/index.html">v0 original</a>
+  </div>
+
+</body>
+</html>

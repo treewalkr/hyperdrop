@@ -1,0 +1,1121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Drop — Send Files</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📤</text></svg>">
+  <style>
+    /* ========================================
+       RESET & THEME
+       ======================================== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0f;
+      --surface: #13131a;
+      --surface-hover: #1a1a24;
+      --border: #2a2a3a;
+      --text: #e4e4ef;
+      --text-muted: #6e6e82;
+      --accent: #6c5ce7;
+      --accent-glow: rgba(108, 92, 231, 0.25);
+      --success: #00cec9;
+      --danger: #ff6b6b;
+      --warning: #fdcb6e;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --header-h: 52px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ========================================
+       HEADER
+       ======================================== */
+    .app-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 1.5rem;
+      height: var(--header-h);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .app-header .brand {
+      font-size: 1.1rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #6c5ce7, #a29bfe);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-decoration: none;
+    }
+
+    .header-nav {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .header-nav a {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.4rem 0.85rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-decoration: none;
+      border: 1px solid transparent;
+      transition: all 0.15s;
+    }
+
+    .header-nav a:hover {
+      color: var(--text);
+      background: var(--surface-hover);
+      border-color: var(--border);
+    }
+
+    .header-nav a.active {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: var(--accent-glow);
+    }
+
+    .header-nav a svg {
+      width: 16px;
+      height: 16px;
+      stroke: currentColor;
+      fill: none;
+    }
+
+    /* ========================================
+       BODY DRAG-OVER STATE
+       ======================================== */
+    body.drag-active::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: rgba(108, 92, 231, 0.08);
+      border: 3px dashed var(--accent);
+      z-index: 50;
+      pointer-events: none;
+      animation: pulse-border 1s ease infinite;
+    }
+
+    @keyframes pulse-border {
+      0%, 100% { border-color: var(--accent); }
+      50% { border-color: rgba(108, 92, 231, 0.3); }
+    }
+
+    /* ========================================
+       VARIANT A — CENTERED DROP ZONE
+       ======================================== */
+    .variant-a {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: calc(100vh - var(--header-h));
+      padding: 2rem;
+      gap: 2rem;
+    }
+
+    .variant-a .intro { text-align: center; }
+
+    .variant-a .intro h2 {
+      font-size: 1.8rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .variant-a .intro p {
+      color: var(--text-muted);
+      margin-top: 0.5rem;
+      font-size: 0.95rem;
+    }
+
+    .variant-a .dropzone {
+      width: 100%;
+      max-width: 520px;
+      min-height: 280px;
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .variant-a .dropzone:hover,
+    .variant-a .dropzone.dragover {
+      border-color: var(--accent);
+      background: var(--accent-glow);
+    }
+
+    .variant-a .dropzone svg {
+      width: 48px; height: 48px;
+      stroke: var(--text-muted);
+      transition: stroke 0.2s;
+    }
+
+    .variant-a .dropzone:hover svg,
+    .variant-a .dropzone.dragover svg {
+      stroke: var(--accent);
+    }
+
+    .variant-a .dropzone .label { color: var(--text-muted); font-size: 0.95rem; }
+    .variant-a .dropzone .browse { color: var(--accent); text-decoration: underline; }
+
+    .variant-a .file-list {
+      width: 100%;
+      max-width: 520px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .empty-hint {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      padding: 1rem 0;
+      opacity: 0.7;
+    }
+
+    /* ========================================
+       VARIANT B — SPLIT PANEL
+       ======================================== */
+    .variant-b {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      min-height: calc(100vh - var(--header-h));
+    }
+
+    .variant-b .drop-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      border-right: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .variant-b .drop-panel h2 {
+      font-size: 1.3rem;
+      font-weight: 700;
+      margin-bottom: 1.5rem;
+    }
+
+    .variant-b .drop-area {
+      width: 100%;
+      max-width: 340px;
+      aspect-ratio: 1;
+      border: 2px dashed var(--border);
+      border-radius: 50%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      cursor: pointer;
+      transition: all 0.25s ease;
+    }
+
+    .variant-b .drop-area:hover,
+    .variant-b .drop-area.dragover {
+      border-color: var(--success);
+      background: rgba(0, 206, 201, 0.08);
+      transform: scale(1.02);
+    }
+
+    .variant-b .drop-area svg {
+      width: 40px; height: 40px;
+      stroke: var(--text-muted);
+      fill: none;
+    }
+
+    .variant-b .drop-area:hover svg,
+    .variant-b .drop-area.dragover svg {
+      stroke: var(--success);
+    }
+
+    .variant-b .drop-area .label { color: var(--text-muted); font-size: 0.9rem; }
+    .variant-b .drop-area .browse { color: var(--success); font-size: 0.8rem; text-decoration: underline; }
+
+    .variant-b .queue-panel {
+      display: flex;
+      flex-direction: column;
+      padding: 2rem;
+      overflow-y: auto;
+    }
+
+    .variant-b .queue-panel h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 1rem;
+    }
+
+    .variant-b .file-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .variant-b .empty-state {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    /* ========================================
+       VARIANT C — TOP STRIP + GRID
+       ======================================== */
+    .variant-c {
+      display: flex;
+      flex-direction: column;
+      min-height: calc(100vh - var(--header-h));
+    }
+
+    .variant-c .strip {
+      padding: 1.5rem 2rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .variant-c .dropzone {
+      width: 100%;
+      min-height: 100px;
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      background: var(--surface);
+    }
+
+    .variant-c .dropzone:hover,
+    .variant-c .dropzone.dragover {
+      border-color: var(--accent);
+      background: var(--accent-glow);
+    }
+
+    .variant-c .dropzone svg {
+      width: 28px; height: 28px;
+      stroke: var(--text-muted);
+      fill: none;
+    }
+
+    .variant-c .dropzone:hover svg,
+    .variant-c .dropzone.dragover svg {
+      stroke: var(--accent);
+    }
+
+    .variant-c .dropzone span { color: var(--text-muted); font-size: 0.9rem; }
+
+    .variant-c .content {
+      flex: 1;
+      padding: 1.5rem 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .variant-c .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .variant-c .section-header h3 { font-size: 0.95rem; font-weight: 600; }
+    .variant-c .section-header .count { font-size: 0.8rem; color: var(--text-muted); }
+
+    .variant-c .file-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 0.5rem;
+    }
+
+    /* ========================================
+       FILE CARD
+       ======================================== */
+    .file-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.75rem 0.85rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.65rem;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .file-card:hover { background: var(--surface-hover); }
+
+    .file-card.state-error {
+      border-color: rgba(255,107,107,0.3);
+      background: rgba(255,107,107,0.04);
+    }
+
+    .file-card .file-icon {
+      width: 36px; height: 36px; min-width: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+
+    .file-icon.doc  { background: rgba(108,92,231,0.2); color: #6c5ce7; }
+    .file-icon.img  { background: rgba(0,206,201,0.2); color: #00cec9; }
+    .file-icon.vid  { background: rgba(255,107,107,0.2); color: #ff6b6b; }
+    .file-icon.zip  { background: rgba(253,203,110,0.2); color: #fdcb6e; }
+    .file-icon.file { background: rgba(110,110,130,0.2); color: #6e6e82; }
+
+    .file-card .file-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .file-card .file-name {
+      font-size: 0.88rem;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+
+    .file-card .file-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-top: 2px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    .file-meta .speed { color: var(--accent); font-weight: 500; }
+    .file-meta .done-label { color: var(--success); font-weight: 500; }
+    .file-meta .error-label { color: var(--danger); font-weight: 500; }
+    .file-meta .paused-label { color: var(--warning); font-weight: 500; }
+
+    .file-card .progress-bar {
+      width: 100%;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      margin-top: 5px;
+      overflow: hidden;
+    }
+
+    .file-card .progress-bar .fill {
+      height: 100%;
+      border-radius: 2px;
+      width: 0%;
+      transition: width 0.15s ease;
+      background: var(--accent);
+    }
+
+    .fill.done   { background: var(--success); }
+    .fill.error  { background: var(--danger); }
+    .fill.paused { background: var(--warning); }
+
+    /* --- Actions --- */
+    .file-card .actions {
+      display: flex;
+      align-items: center;
+      gap: 1px;
+      flex-shrink: 0;
+      flex-wrap: nowrap;
+    }
+
+    @media (hover: none) {
+      /* Touch devices: always show actions */
+      .file-card .actions { opacity: 1 !important; }
+    }
+
+    .act-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 0.3rem;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.15s, background 0.15s;
+    }
+
+    .act-btn:hover { background: var(--surface-hover); color: var(--text); }
+    .act-btn.danger:hover { color: var(--danger); background: rgba(255,107,107,0.1); }
+    .act-btn svg { width: 16px; height: 16px; }
+
+    /* ========================================
+       TOAST
+       ======================================== */
+    .toast-container {
+      position: fixed;
+      top: calc(var(--header-h) + 1rem);
+      right: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      z-index: 9999;
+      pointer-events: none;
+    }
+
+    .toast {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.65rem 1rem;
+      font-size: 0.85rem;
+      color: var(--text);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      pointer-events: auto;
+      animation: toast-in 0.2s ease;
+      max-width: 320px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .toast.success { border-left: 3px solid var(--success); }
+    .toast.error   { border-left: 3px solid var(--danger); }
+    .toast.info    { border-left: 3px solid var(--accent); }
+
+    .toast.out { animation: toast-out 0.15s ease forwards; }
+
+    @keyframes toast-in  { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: none; } }
+    @keyframes toast-out { to { opacity: 0; transform: translateX(20px); } }
+
+    /* ========================================
+       CONFIRM MODAL
+       ======================================== */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 10000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.open { display: flex; }
+
+    .modal-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      max-width: 380px;
+      width: 90%;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+    }
+
+    .modal-box h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; }
+    .modal-box p  { font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1.25rem; line-height: 1.5; }
+    .modal-box .fname { color: var(--text); font-weight: 500; }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+    }
+
+    .modal-actions button {
+      padding: 0.45rem 1rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.85rem;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      background: none;
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .modal-actions button:hover { background: var(--surface-hover); }
+
+    .modal-actions .btn-danger {
+      background: var(--danger);
+      border-color: var(--danger);
+      color: #fff;
+    }
+
+    .modal-actions .btn-danger:hover { background: #e25555; }
+
+    /* ========================================
+       FLOATING SWITCHER
+       ======================================== */
+    .prototype-switcher {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e1e2e;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 0.4rem 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.82rem;
+      z-index: 9998;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      user-select: none;
+    }
+
+    .prototype-switcher button {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text);
+      width: 30px; height: 30px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.95rem;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .prototype-switcher button:hover {
+      background: var(--surface-hover);
+      border-color: var(--accent);
+    }
+
+    .prototype-switcher .label {
+      color: var(--text);
+      font-weight: 600;
+      min-width: 140px;
+      text-align: center;
+    }
+
+    .prototype-switcher .label small {
+      display: block;
+      color: var(--text-muted);
+      font-weight: 400;
+      font-size: 0.72rem;
+    }
+
+    /* ========================================
+       RESPONSIVE
+       ======================================== */
+    @media (max-width: 768px) {
+      .variant-b {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
+      }
+
+      .variant-b .drop-panel {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        padding: 1.5rem;
+      }
+
+      .variant-b .drop-area {
+        max-width: 240px;
+        aspect-ratio: 1;
+      }
+
+      .variant-b .queue-panel { padding: 1.5rem; }
+
+      .variant-c .strip { padding: 1rem; }
+      .variant-c .content { padding: 1rem; }
+      .variant-c .file-list { grid-template-columns: 1fr; }
+
+      .app-header { padding: 0 1rem; }
+      .toast-container { right: 1rem; left: 1rem; }
+      .toast { max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============================
+       HEADER
+       ============================ -->
+  <header class="app-header">
+    <a href="index.html" class="brand">Drop</a>
+    <nav class="header-nav">
+      <a href="index.html" class="active" title="Upload files">
+        <svg stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+        Send
+      </a>
+      <a href="files.html" title="Manage files">
+        <svg stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
+        Files
+      </a>
+    </nav>
+  </header>
+
+  <!-- ============================
+       VARIANT A — CENTERED
+       ============================ -->
+  <div class="variant-a" id="variant-a" style="display:none">
+    <div class="intro">
+      <h2>Send files to this machine</h2>
+      <p>Drop files below — they'll be saved locally</p>
+    </div>
+    <div class="dropzone" id="dropzone-a">
+      <svg fill="none" stroke-width="1.5" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+      </svg>
+      <span class="label">Drag files here or <span class="browse">browse</span></span>
+    </div>
+    <div class="file-list" id="file-list-a"></div>
+  </div>
+
+  <!-- ============================
+       VARIANT B — SPLIT PANEL
+       ============================ -->
+  <div class="variant-b" id="variant-b" style="display:none">
+    <div class="drop-panel">
+      <h2>Send Files</h2>
+      <div class="drop-area" id="dropzone-b">
+        <svg fill="none" stroke-width="1.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"/>
+        </svg>
+        <span class="label">Drop here</span>
+        <span class="browse">or browse files</span>
+      </div>
+    </div>
+    <div class="queue-panel">
+      <h2>Upload Queue</h2>
+      <div class="file-list" id="file-list-b"></div>
+      <div class="empty-state" id="empty-b">No files in queue</div>
+    </div>
+  </div>
+
+  <!-- ============================
+       VARIANT C — TOP STRIP
+       ============================ -->
+  <div class="variant-c" id="variant-c" style="display:none">
+    <div class="strip">
+      <div class="dropzone" id="dropzone-c">
+        <svg fill="none" stroke-width="1.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"/>
+        </svg>
+        <span>Drag files here or <span class="browse" style="color:var(--accent);text-decoration:underline">browse</span></span>
+      </div>
+    </div>
+    <div class="content">
+      <div class="section-header">
+        <h3>Files</h3>
+        <span class="count" id="file-count-c">0 files</span>
+      </div>
+      <div class="file-list" id="file-list-c"></div>
+    </div>
+  </div>
+
+  <!-- ============================
+       CONFIRM MODAL
+       ============================ -->
+  <div class="modal-overlay" id="confirm-modal">
+    <div class="modal-box">
+      <h3 id="confirm-title">Remove file?</h3>
+      <p id="confirm-body">This cannot be undone.</p>
+      <div class="modal-actions">
+        <button id="confirm-cancel">Cancel</button>
+        <button class="btn-danger" id="confirm-ok">Remove</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================
+       TOASTS
+       ============================ -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- ============================
+       SWITCHER
+       ============================ -->
+  <div class="prototype-switcher">
+    <button id="prev-btn" title="Previous variant">←</button>
+    <div class="label" id="switcher-label">A — Centered<small>?variant=A</small></div>
+    <button id="next-btn" title="Next variant">→</button>
+  </div>
+
+  <!-- Hidden file input -->
+  <input type="file" id="file-input" multiple style="display:none">
+
+  <script>
+    // ============================
+    // Icons
+    // ============================
+    const I = {
+      pause:   '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>',
+      play:    '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="6,4 20,12 6,20"/></svg>',
+      x:       '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>',
+      dl:      '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12M12 16.5V3"/></svg>',
+      link:    '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.86-2.54a4.5 4.5 0 00-1.242-7.244l-4.5-4.5a4.5 4.5 0 00-6.364 6.364L4.757 8.96"/></svg>',
+      refresh: '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/></svg>',
+      dots:    '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="18" r="1.5"/></svg>',
+    };
+
+    // ============================
+    // Toast
+    // ============================
+    function toast(msg, type = 'info') {
+      const el = document.createElement('div');
+      el.className = `toast ${type}`;
+      el.textContent = msg;
+      document.getElementById('toast-container').appendChild(el);
+      setTimeout(() => {
+        el.classList.add('out');
+        setTimeout(() => el.remove(), 150);
+      }, 2500);
+    }
+
+    // ============================
+    // Confirm Modal
+    // ============================
+    let confirmResolve = null;
+
+    function confirm(title, body) {
+      return new Promise(resolve => {
+        confirmResolve = resolve;
+        document.getElementById('confirm-title').textContent = title;
+        document.getElementById('confirm-body').innerHTML = body;
+        document.getElementById('confirm-modal').classList.add('open');
+      });
+    }
+
+    document.getElementById('confirm-cancel').addEventListener('click', () => {
+      document.getElementById('confirm-modal').classList.remove('open');
+      if (confirmResolve) { confirmResolve(false); confirmResolve = null; }
+    });
+
+    document.getElementById('confirm-ok').addEventListener('click', () => {
+      document.getElementById('confirm-modal').classList.remove('open');
+      if (confirmResolve) { confirmResolve(true); confirmResolve = null; }
+    });
+
+    document.getElementById('confirm-modal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) {
+        e.currentTarget.classList.remove('open');
+        if (confirmResolve) { confirmResolve(false); confirmResolve = null; }
+      }
+    });
+
+    // ============================
+    // Variant Switcher
+    // ============================
+    const VARIANTS = [
+      { key: 'A', name: 'Centered',    desc: 'Centered drop zone' },
+      { key: 'B', name: 'Split Panel', desc: 'Drop left, queue right' },
+      { key: 'C', name: 'Strip',       desc: 'Top strip + grid' },
+    ];
+
+    const params = new URLSearchParams(window.location.search);
+    let currentIdx = VARIANTS.findIndex(v => v.key === (params.get('variant') || 'A'));
+    if (currentIdx === -1) currentIdx = 0;
+
+    function showVariant(idx) {
+      currentIdx = idx;
+      const v = VARIANTS[idx];
+      document.querySelectorAll('[id^="variant-"]').forEach(el => el.style.display = 'none');
+      document.getElementById(`variant-${v.key.toLowerCase()}`).style.display = '';
+      document.getElementById('switcher-label').innerHTML = `${v.key} — ${v.name}<small>?variant=${v.key}</small>`;
+      const url = new URL(window.location);
+      url.searchParams.set('variant', v.key);
+      history.replaceState(null, '', url);
+      render();
+    }
+
+    document.getElementById('prev-btn').addEventListener('click', () => showVariant((currentIdx - 1 + VARIANTS.length) % VARIANTS.length));
+    document.getElementById('next-btn').addEventListener('click', () => showVariant((currentIdx + 1) % VARIANTS.length));
+
+    document.addEventListener('keydown', e => {
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
+      if (e.key === 'ArrowLeft') { e.preventDefault(); showVariant((currentIdx - 1 + VARIANTS.length) % VARIANTS.length); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); showVariant((currentIdx + 1) % VARIANTS.length); }
+      if (e.key === 'Escape') {
+        const m = document.getElementById('confirm-modal');
+        if (m.classList.contains('open')) { m.classList.remove('open'); if (confirmResolve) { confirmResolve(false); confirmResolve = null; } }
+      }
+    });
+
+    // ============================
+    // File State
+    // ============================
+    let files = [];
+    let idCounter = 0;
+
+    function getExt(name) {
+      const parts = name.split('.');
+      return parts.length > 1 ? parts.pop().toLowerCase() : '';
+    }
+
+    function extCategory(ext) {
+      const docs = ['pdf','doc','docx','txt','md','xls','xlsx','csv','ppt','pptx','rtf','fig'];
+      const imgs = ['png','jpg','jpeg','gif','svg','webp','bmp','ico'];
+      const vids = ['mp4','mov','avi','mkv','webm','flv','wmv'];
+      const zips = ['zip','rar','7z','tar','gz','bz2','xz'];
+      if (docs.includes(ext)) return 'doc';
+      if (imgs.includes(ext)) return 'img';
+      if (vids.includes(ext)) return 'vid';
+      if (zips.includes(ext)) return 'zip';
+      return 'file';
+    }
+
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+      if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+      return (bytes / 1073741824).toFixed(2) + ' GB';
+    }
+
+    function addFiles(fileList) {
+      for (const f of fileList) {
+        const ext = getExt(f.name);
+        const entry = {
+          id: ++idCounter,
+          name: f.name,
+          size: f.size,
+          ext,
+          category: extCategory(ext),
+          progress: 0,
+          status: 'uploading',
+          speed: 0,
+          timer: null,
+        };
+        files.push(entry);
+        simulateUpload(entry);
+      }
+      render();
+      toast(`${fileList.length} file${fileList.length > 1 ? 's' : ''} added`, 'info');
+    }
+
+    async function removeFile(id) {
+      const f = files.find(x => x.id === id);
+      if (!f) return;
+      const ok = await confirm('Remove file?', `Remove <span class="fname">${f.name}</span>? This cannot be undone.`);
+      if (!ok) return;
+      if (f.timer) clearInterval(f.timer);
+      files = files.filter(x => x.id !== id);
+      render();
+      toast(`${f.name} removed`, 'info');
+    }
+
+    function pauseUpload(id) {
+      const f = files.find(x => x.id === id);
+      if (!f || f.status !== 'uploading') return;
+      clearInterval(f.timer);
+      f.timer = null;
+      f.status = 'paused';
+      render();
+      toast(`${f.name} paused`, 'info');
+    }
+
+    function resumeUpload(id) {
+      const f = files.find(x => x.id === id);
+      if (!f || (f.status !== 'paused' && f.status !== 'error')) return;
+      f.status = 'uploading';
+      simulateUpload(f);
+      render();
+      toast(`${f.name} resumed`, 'info');
+    }
+
+    function simulateUpload(entry) {
+      let progress = entry.progress;
+      // Simulate: ramp up, plateau, slight slowdown near end
+      entry.timer = setInterval(() => {
+        const ramp = progress < 20 ? 0.5 : 1;
+        const slowdown = progress > 85 ? 0.4 : 1;
+        const step = (1.5 + Math.random() * 2) * ramp * slowdown;
+        progress = Math.min(100, progress + step);
+        entry.progress = progress;
+        // Simulate speed: ramp up then plateau
+        const baseSpeed = progress < 20 ? 5 + progress * 0.5 : 15;
+        entry.speed = (baseSpeed + Math.random() * 10).toFixed(1);
+
+        // Small chance of error at mid-transfer for realism
+        if (progress > 30 && progress < 70 && Math.random() < 0.001) {
+          entry.status = 'error';
+          clearInterval(entry.timer);
+          entry.timer = null;
+          render();
+          toast(`${entry.name} failed to upload`, 'error');
+          return;
+        }
+
+        if (progress >= 100) {
+          entry.progress = 100;
+          entry.status = 'done';
+          entry.speed = 0;
+          clearInterval(entry.timer);
+          entry.timer = null;
+          render();
+          toast(`${entry.name} uploaded`, 'success');
+          return;
+        }
+        render();
+      }, 100);
+    }
+
+    // ============================
+    // Render
+    // ============================
+    function fileCardHTML(f) {
+      const label = f.ext || '?';
+      const stateClass = f.status === 'error' ? ' state-error' : '';
+
+      let metaHTML = '';
+      if (f.status === 'uploading') {
+        metaHTML = `${formatSize(f.size)} · <span class="speed">${f.speed} MB/s</span> · ${Math.round(100 - f.progress)}% left`;
+      } else if (f.status === 'paused') {
+        metaHTML = `${formatSize(f.size)} · <span class="paused-label">Paused</span> at ${Math.round(f.progress)}%`;
+      } else if (f.status === 'error') {
+        metaHTML = `${formatSize(f.size)} · <span class="error-label">Failed — tap retry</span>`;
+      } else {
+        metaHTML = `${formatSize(f.size)} · <span class="done-label">Complete</span>`;
+      }
+
+      const fillClass = f.status === 'done' ? 'fill done' : f.status === 'error' ? 'fill error' : f.status === 'paused' ? 'fill paused' : 'fill';
+
+      let actionsHTML = '';
+      if (f.status === 'uploading') {
+        actionsHTML = `
+          <button class="act-btn" onclick="event.stopPropagation();pauseUpload(${f.id})" title="Pause" aria-label="Pause upload">${I.pause}</button>
+          <button class="act-btn danger" onclick="event.stopPropagation();removeFile(${f.id})" title="Cancel" aria-label="Cancel upload">${I.x}</button>
+        `;
+      } else if (f.status === 'paused') {
+        actionsHTML = `
+          <button class="act-btn" onclick="event.stopPropagation();resumeUpload(${f.id})" title="Resume" aria-label="Resume upload">${I.play}</button>
+          <button class="act-btn danger" onclick="event.stopPropagation();removeFile(${f.id})" title="Cancel" aria-label="Cancel upload">${I.x}</button>
+        `;
+      } else if (f.status === 'error') {
+        actionsHTML = `
+          <button class="act-btn" onclick="event.stopPropagation();resumeUpload(${f.id})" title="Retry" aria-label="Retry upload">${I.refresh}</button>
+          <button class="act-btn danger" onclick="event.stopPropagation();removeFile(${f.id})" title="Dismiss" aria-label="Remove">${I.x}</button>
+        `;
+      } else {
+        actionsHTML = `
+          <button class="act-btn" onclick="event.stopPropagation();toast('Downloaded ${f.name}','success')" title="Download" aria-label="Download file">${I.dl}</button>
+          <button class="act-btn" onclick="event.stopPropagation();toast('Link copied','success')" title="Copy link" aria-label="Copy link">${I.link}</button>
+          <button class="act-btn danger" onclick="event.stopPropagation();removeFile(${f.id})" title="Delete" aria-label="Delete file">${I.x}</button>
+        `;
+      }
+
+      return `
+        <div class="file-card${stateClass}" data-id="${f.id}">
+          <div class="file-icon ${f.category}">${label}</div>
+          <div class="file-info">
+            <div class="file-name" title="${f.name}">${f.name}</div>
+            <div class="file-meta">${metaHTML}</div>
+            <div class="progress-bar"><div class="${fillClass}" style="width:${f.progress}%"></div></div>
+          </div>
+          <div class="actions">${actionsHTML}</div>
+        </div>
+      `;
+    }
+
+    function render() {
+      const html = files.map(f => fileCardHTML(f)).join('');
+      const hint = files.length ? '' : '<div class="empty-hint">Files you drop will appear here</div>';
+
+      const listA = document.getElementById('file-list-a');
+      if (listA) listA.innerHTML = html + hint;
+
+      const listB = document.getElementById('file-list-b');
+      const emptyB = document.getElementById('empty-b');
+      if (listB) listB.innerHTML = html;
+      if (emptyB) emptyB.style.display = files.length ? 'none' : '';
+
+      const listC = document.getElementById('file-list-c');
+      const countC = document.getElementById('file-count-c');
+      if (listC) listC.innerHTML = html;
+      if (countC) countC.textContent = `${files.length} file${files.length !== 1 ? 's' : ''}`;
+    }
+
+    // ============================
+    // Drag & Drop
+    // ============================
+    let dragCounter = 0;
+
+    function setupDropzone(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+
+      el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('dragover'); });
+      el.addEventListener('dragleave', e => { e.preventDefault(); el.classList.remove('dragover'); });
+      el.addEventListener('drop', e => {
+        e.preventDefault();
+        el.classList.remove('dragover');
+        if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+      });
+      el.addEventListener('click', () => document.getElementById('file-input').click());
+    }
+
+    // Body-level drag state
+    document.addEventListener('dragenter', e => {
+      e.preventDefault();
+      dragCounter++;
+      document.body.classList.add('drag-active');
+    });
+
+    document.addEventListener('dragleave', e => {
+      e.preventDefault();
+      dragCounter--;
+      if (dragCounter <= 0) { dragCounter = 0; document.body.classList.remove('drag-active'); }
+    });
+
+    document.addEventListener('dragover', e => e.preventDefault());
+
+    document.addEventListener('drop', e => {
+      e.preventDefault();
+      dragCounter = 0;
+      document.body.classList.remove('drag-active');
+    });
+
+    document.getElementById('file-input').addEventListener('change', e => {
+      if (e.target.files.length) addFiles(e.target.files);
+      e.target.value = '';
+    });
+
+    setupDropzone('dropzone-a');
+    setupDropzone('dropzone-b');
+    setupDropzone('dropzone-c');
+
+    // Boot
+    showVariant(currentIdx);
+  </script>
+</body>
+</html>

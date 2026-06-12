@@ -1,0 +1,1452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HyperDrop — Send Files</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    /* ========================================
+       RESET & THEME
+       ======================================== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #faf8ff;
+      --surface: #ffffff;
+      --surface-hover: #f5f3ff;
+      --border: #e8e0f0;
+      --text: #1a1a2e;
+      --text-muted: #8888aa;
+      --accent-start: #ff6b35;
+      --accent-mid: #ff1493;
+      --accent-end: #8b5cf6;
+      --accent: #8b5cf6;
+      --accent-light: rgba(139,92,246,0.08);
+      --success: #10b981;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --gradient: linear-gradient(135deg, #ff6b35, #ff1493, #8b5cf6);
+      --radius: 16px;
+      --radius-sm: 10px;
+      --radius-pill: 999px;
+      --header-h: 60px;
+      --shadow-sm: 0 2px 8px rgba(0,0,0,0.04);
+      --shadow: 0 4px 16px rgba(0,0,0,0.06);
+      --shadow-lg: 0 8px 32px rgba(0,0,0,0.08);
+      --shadow-card: 0 2px 12px rgba(139,92,246,0.06);
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Subtle background gradient mesh */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 600px 400px at 10% 20%, rgba(255,107,53,0.04), transparent),
+        radial-gradient(ellipse 500px 500px at 80% 10%, rgba(255,20,147,0.04), transparent),
+        radial-gradient(ellipse 600px 400px at 60% 80%, rgba(139,92,246,0.05), transparent),
+        radial-gradient(ellipse 400px 300px at 90% 60%, rgba(255,107,53,0.03), transparent);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ========================================
+       GRADIENT TEXT UTILITY
+       ======================================== */
+    .gradient-text {
+      background: var(--gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* ========================================
+       HEADER
+       ======================================== */
+    .app-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 2rem;
+      height: var(--header-h);
+      background: rgba(255,255,255,0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .app-header .brand {
+      font-size: 1.2rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      background: var(--gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      text-decoration: none;
+    }
+
+    .header-nav {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .header-nav a {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.45rem 1rem;
+      border-radius: var(--radius-pill);
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-decoration: none;
+      border: none;
+      transition: all 0.2s ease;
+    }
+
+    .header-nav a:hover {
+      color: var(--text);
+      background: var(--surface-hover);
+    }
+
+    .header-nav a.active {
+      color: #fff;
+      background: var(--gradient);
+      box-shadow: 0 2px 12px rgba(139,92,246,0.25);
+    }
+
+    .header-nav a svg {
+      width: 16px;
+      height: 16px;
+      stroke: currentColor;
+      fill: none;
+    }
+
+    /* ========================================
+       BODY DRAG-OVER STATE
+       ======================================== */
+    body.drag-active::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: rgba(139,92,246,0.06);
+      border: 3px dashed var(--accent);
+      z-index: 50;
+      pointer-events: none;
+      animation: pulse-border 1.2s ease infinite;
+    }
+
+    @keyframes pulse-border {
+      0%, 100% { border-color: var(--accent); opacity: 1; }
+      50% { border-color: rgba(255,20,147,0.4); opacity: 0.8; }
+    }
+
+    /* ========================================
+       ANIMATED GRADIENT BORDER FOR DROPZONE
+       ======================================== */
+    @keyframes spin-border {
+      to { --border-angle: 360deg; }
+    }
+
+    @property --border-angle {
+      syntax: '<angle>';
+      initial-value: 0deg;
+      inherits: false;
+    }
+
+    .gradient-border-wrapper {
+      position: relative;
+      padding: 3px;
+      border-radius: 28px;
+      background: conic-gradient(from var(--border-angle), #ff6b35, #ff1493, #8b5cf6, #ff6b35);
+      animation: spin-border 4s linear infinite;
+    }
+
+    .gradient-border-wrapper.fast {
+      animation-duration: 1.5s;
+    }
+
+    .gradient-border-wrapper > .inner {
+      background: var(--surface);
+      border-radius: 25px;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* ========================================
+       VARIANT A — HERO
+       ======================================== */
+    .variant-a {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: calc(100vh - var(--header-h));
+      padding: 2.5rem 2rem;
+      gap: 2rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    .variant-a .intro {
+      text-align: center;
+    }
+
+    .variant-a .intro h2 {
+      font-size: 2.8rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1.15;
+      background: var(--gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .variant-a .intro p {
+      color: var(--text-muted);
+      margin-top: 0.65rem;
+      font-size: 1.05rem;
+      font-weight: 400;
+    }
+
+    .variant-a .dropzone {
+      width: 100%;
+      max-width: 560px;
+      min-height: 280px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.85rem;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .variant-a .dropzone:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(139,92,246,0.12);
+    }
+
+    .variant-a .dropzone.dragover {
+      transform: scale(1.02);
+      box-shadow: 0 12px 40px rgba(255,20,147,0.18);
+    }
+
+    .variant-a .dropzone svg {
+      width: 52px; height: 52px;
+      stroke: var(--text-muted);
+      fill: none;
+      transition: all 0.2s;
+    }
+
+    .variant-a .dropzone:hover svg,
+    .variant-a .dropzone.dragover svg {
+      stroke: var(--accent);
+    }
+
+    .variant-a .dropzone .label {
+      color: var(--text-muted);
+      font-size: 1rem;
+      font-weight: 500;
+    }
+
+    .variant-a .dropzone .browse {
+      color: var(--accent);
+      text-decoration: underline;
+      font-weight: 600;
+    }
+
+    .variant-a .file-list {
+      width: 100%;
+      max-width: 560px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .empty-hint {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      padding: 1.5rem 0;
+      opacity: 0.6;
+    }
+
+    /* ========================================
+       VARIANT B — SPLIT PANEL
+       ======================================== */
+    .variant-b {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      min-height: calc(100vh - var(--header-h));
+      position: relative;
+      z-index: 1;
+    }
+
+    .variant-b .drop-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+      background: linear-gradient(160deg, rgba(139,92,246,0.04), rgba(255,20,147,0.03), rgba(255,107,53,0.02));
+      border-right: 1px solid var(--border);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .variant-b .drop-panel::before {
+      content: '';
+      position: absolute;
+      width: 400px;
+      height: 400px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(139,92,246,0.06), transparent 70%);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    .variant-b .drop-panel h2 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin-bottom: 2rem;
+      letter-spacing: -0.02em;
+      position: relative;
+      z-index: 1;
+    }
+
+    .variant-b .drop-area {
+      width: 100%;
+      max-width: 300px;
+      aspect-ratio: 1;
+      border: 2.5px dashed var(--border);
+      border-radius: 50%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.65rem;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      background: var(--surface);
+      position: relative;
+      z-index: 1;
+    }
+
+    .variant-b .drop-area:hover,
+    .variant-b .drop-area.dragover {
+      border-color: var(--accent);
+      background: var(--accent-light);
+      transform: scale(1.04);
+      box-shadow: 0 8px 32px rgba(139,92,246,0.12);
+    }
+
+    .variant-b .drop-area svg {
+      width: 44px; height: 44px;
+      stroke: var(--text-muted);
+      fill: none;
+      transition: stroke 0.2s;
+    }
+
+    .variant-b .drop-area:hover svg,
+    .variant-b .drop-area.dragover svg {
+      stroke: var(--accent);
+    }
+
+    .variant-b .drop-area .label {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      font-weight: 500;
+    }
+
+    .variant-b .drop-area .browse {
+      color: var(--accent);
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-decoration: underline;
+    }
+
+    .variant-b .queue-panel {
+      display: flex;
+      flex-direction: column;
+      padding: 2.5rem 2rem;
+      overflow-y: auto;
+      background: var(--bg);
+    }
+
+    .variant-b .queue-panel h2 {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 1.25rem;
+    }
+
+    .variant-b .file-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .variant-b .empty-state {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      opacity: 0.6;
+    }
+
+    /* ========================================
+       VARIANT C — CARDS GRID
+       ======================================== */
+    .variant-c {
+      display: flex;
+      flex-direction: column;
+      min-height: calc(100vh - var(--header-h));
+      position: relative;
+      z-index: 1;
+    }
+
+    .variant-c .strip {
+      padding: 1.5rem 2rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.6);
+      backdrop-filter: blur(8px);
+    }
+
+    .variant-c .dropzone {
+      width: 100%;
+      min-height: 90px;
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.85rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      background: var(--surface);
+    }
+
+    .variant-c .dropzone:hover,
+    .variant-c .dropzone.dragover {
+      border-color: var(--accent);
+      background: var(--accent-light);
+      box-shadow: var(--shadow);
+    }
+
+    .variant-c .dropzone svg {
+      width: 28px; height: 28px;
+      stroke: var(--text-muted);
+      fill: none;
+      transition: stroke 0.2s;
+    }
+
+    .variant-c .dropzone:hover svg,
+    .variant-c .dropzone.dragover svg {
+      stroke: var(--accent);
+    }
+
+    .variant-c .dropzone span {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    .variant-c .content {
+      flex: 1;
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .variant-c .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .variant-c .section-header h3 {
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    .variant-c .section-header .count {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .variant-c .file-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 0.75rem;
+    }
+
+    /* ========================================
+       FILE CARD
+       ======================================== */
+    .file-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid transparent;
+      border-image: var(--gradient) 1;
+      border-image-slice: 1;
+      border-radius: var(--radius);
+      padding: 1rem 1.1rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.85rem;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      box-shadow: var(--shadow-card);
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Gradient left accent strip using pseudo-element */
+    .file-card::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: var(--gradient);
+      border-radius: 3px 0 0 3px;
+    }
+
+    .file-card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .file-card.state-error {
+      border-color: rgba(239,68,68,0.25);
+      background: rgba(239,68,68,0.02);
+    }
+
+    .file-card.state-error::before {
+      background: var(--danger);
+    }
+
+    .file-card .file-icon {
+      width: 42px; height: 42px; min-width: 42px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      flex-shrink: 0;
+      color: #fff;
+      letter-spacing: 0.02em;
+    }
+
+    .file-icon.doc  { background: linear-gradient(135deg, #8b5cf6, #6d28d9); }
+    .file-icon.img  { background: linear-gradient(135deg, #06b6d4, #0891b2); }
+    .file-icon.vid  { background: linear-gradient(135deg, #f43f5e, #e11d48); }
+    .file-icon.zip  { background: linear-gradient(135deg, #f59e0b, #d97706); }
+    .file-icon.file { background: linear-gradient(135deg, #94a3b8, #64748b); }
+
+    .file-card .file-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .file-card .file-name {
+      font-size: 0.9rem;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+      color: var(--text);
+    }
+
+    .file-card .file-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-top: 3px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      font-weight: 500;
+    }
+
+    .file-meta .speed {
+      background: var(--gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      font-weight: 600;
+    }
+
+    .file-meta .done-label { color: var(--success); font-weight: 600; }
+    .file-meta .error-label { color: var(--danger); font-weight: 600; }
+    .file-meta .paused-label { color: var(--warning); font-weight: 600; }
+
+    .file-card .progress-bar {
+      width: 100%;
+      height: 5px;
+      background: var(--border);
+      border-radius: 5px;
+      margin-top: 7px;
+      overflow: hidden;
+    }
+
+    .file-card .progress-bar .fill {
+      height: 100%;
+      border-radius: 5px;
+      width: 0%;
+      transition: width 0.15s ease;
+      background: var(--gradient);
+      position: relative;
+    }
+
+    .file-card .progress-bar .fill::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+      animation: shimmer 2s ease infinite;
+    }
+
+    @keyframes shimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+
+    .fill.done {
+      background: var(--success) !important;
+    }
+
+    .fill.done::after { display: none; }
+
+    .fill.error {
+      background: var(--danger) !important;
+    }
+
+    .fill.error::after { display: none; }
+
+    .fill.paused {
+      background: var(--warning) !important;
+    }
+
+    .fill.paused::after { display: none; }
+
+    /* --- Actions --- */
+    .file-card .actions {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      flex-shrink: 0;
+      flex-wrap: nowrap;
+    }
+
+    @media (hover: none) {
+      .file-card .actions { opacity: 1 !important; }
+    }
+
+    .act-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 0.35rem;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s ease;
+    }
+
+    .act-btn:hover {
+      background: var(--surface-hover);
+      color: var(--text);
+    }
+
+    .act-btn.danger:hover {
+      color: var(--danger);
+      background: rgba(239,68,68,0.08);
+    }
+
+    .act-btn svg { width: 16px; height: 16px; }
+
+    /* ========================================
+       TOAST
+       ======================================== */
+    .toast-container {
+      position: fixed;
+      top: calc(var(--header-h) + 1rem);
+      right: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      z-index: 9999;
+      pointer-events: none;
+    }
+
+    .toast {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.75rem 1.1rem;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text);
+      box-shadow: var(--shadow-lg);
+      pointer-events: auto;
+      animation: toast-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+      max-width: 340px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .toast.success {
+      border-left: 3px solid var(--success);
+    }
+
+    .toast.error {
+      border-left: 3px solid var(--danger);
+    }
+
+    .toast.info {
+      border-left: 3px solid transparent;
+      border-image: var(--gradient) 1;
+    }
+
+    .toast.out {
+      animation: toast-out 0.2s ease forwards;
+    }
+
+    @keyframes toast-in {
+      from { opacity: 0; transform: translateX(24px) scale(0.95); }
+      to { opacity: 1; transform: none; }
+    }
+
+    @keyframes toast-out {
+      to { opacity: 0; transform: translateX(24px) scale(0.95); }
+    }
+
+    /* ========================================
+       CONFIRM MODAL
+       ======================================== */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(26,26,46,0.35);
+      backdrop-filter: blur(6px);
+      z-index: 10000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.open {
+      display: flex;
+    }
+
+    .modal-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 2rem;
+      max-width: 400px;
+      width: 90%;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.12);
+      animation: modal-in 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    @keyframes modal-in {
+      from { opacity: 0; transform: scale(0.92) translateY(8px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    .modal-box h3 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+
+    .modal-box p {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      margin-bottom: 1.5rem;
+      line-height: 1.6;
+    }
+
+    .modal-box .fname {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.65rem;
+    }
+
+    .modal-actions button {
+      padding: 0.5rem 1.25rem;
+      border-radius: var(--radius-pill);
+      font-size: 0.85rem;
+      font-weight: 600;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: inherit;
+    }
+
+    .modal-actions button:hover {
+      background: var(--surface-hover);
+    }
+
+    .modal-actions .btn-danger {
+      background: var(--danger);
+      border-color: var(--danger);
+      color: #fff;
+    }
+
+    .modal-actions .btn-danger:hover {
+      background: #dc2626;
+      box-shadow: 0 4px 12px rgba(239,68,68,0.3);
+    }
+
+    /* ========================================
+       FLOATING SWITCHER
+       ======================================== */
+    .prototype-switcher {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-pill);
+      padding: 0.45rem 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-size: 0.82rem;
+      z-index: 9998;
+      box-shadow: var(--shadow-lg);
+      user-select: none;
+      font-family: inherit;
+    }
+
+    .prototype-switcher button {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      transition: all 0.15s ease;
+      font-family: inherit;
+    }
+
+    .prototype-switcher button:hover {
+      background: var(--accent-light);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .prototype-switcher .label {
+      font-weight: 600;
+      min-width: 160px;
+      text-align: center;
+    }
+
+    .prototype-switcher .label .variant-name {
+      background: var(--gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      font-weight: 700;
+    }
+
+    .prototype-switcher .label small {
+      display: block;
+      color: var(--text-muted);
+      font-weight: 400;
+      font-size: 0.72rem;
+      -webkit-text-fill-color: var(--text-muted);
+    }
+
+    /* ========================================
+       RESPONSIVE
+       ======================================== */
+    @media (max-width: 768px) {
+      .variant-a .intro h2 {
+        font-size: 2rem;
+      }
+
+      .variant-b {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
+      }
+
+      .variant-b .drop-panel {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        padding: 2rem 1.5rem;
+      }
+
+      .variant-b .drop-area {
+        max-width: 200px;
+        aspect-ratio: 1;
+      }
+
+      .variant-b .queue-panel {
+        padding: 1.5rem;
+      }
+
+      .variant-c .strip {
+        padding: 1rem;
+      }
+
+      .variant-c .content {
+        padding: 1.25rem;
+      }
+
+      .variant-c .file-list {
+        grid-template-columns: 1fr;
+      }
+
+      .app-header {
+        padding: 0 1rem;
+      }
+
+      .toast-container {
+        right: 1rem;
+        left: 1rem;
+      }
+
+      .toast {
+        max-width: 100%;
+      }
+    }
+
+    /* ========================================
+       FOCUS / ACCESSIBILITY
+       ======================================== */
+    :focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    .act-btn:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============================
+       HEADER
+       ============================ -->
+  <header class="app-header">
+    <a href="index.html" class="brand">HyperDrop</a>
+    <nav class="header-nav">
+      <a href="index.html" class="active" title="Upload files">
+        <svg stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+        Send
+      </a>
+      <a href="files.html" title="Manage files">
+        <svg stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
+        Files
+      </a>
+    </nav>
+  </header>
+
+  <!-- ============================
+       VARIANT A — HERO
+       ============================ -->
+  <div class="variant-a" id="variant-a" style="display:none">
+    <div class="intro">
+      <h2>Drop it like it's hot</h2>
+      <p>Send files in a flash — drag, drop, done.</p>
+    </div>
+    <div class="gradient-border-wrapper" id="gradient-wrapper-a">
+      <div class="inner dropzone" id="dropzone-a">
+        <svg fill="none" stroke-width="1.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+        </svg>
+        <span class="label">Drag files here or <span class="browse">browse</span></span>
+      </div>
+    </div>
+    <div class="file-list" id="file-list-a"></div>
+  </div>
+
+  <!-- ============================
+       VARIANT B — SPLIT PANEL
+       ============================ -->
+  <div class="variant-b" id="variant-b" style="display:none">
+    <div class="drop-panel">
+      <h2><span class="gradient-text">Send Files</span></h2>
+      <div class="drop-area" id="dropzone-b">
+        <svg fill="none" stroke-width="1.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"/>
+        </svg>
+        <span class="label">Drop here</span>
+        <span class="browse">or browse files</span>
+      </div>
+    </div>
+    <div class="queue-panel">
+      <h2>Upload Queue</h2>
+      <div class="file-list" id="file-list-b"></div>
+      <div class="empty-state" id="empty-b">No files in queue</div>
+    </div>
+  </div>
+
+  <!-- ============================
+       VARIANT C — CARDS GRID
+       ============================ -->
+  <div class="variant-c" id="variant-c" style="display:none">
+    <div class="strip">
+      <div class="dropzone" id="dropzone-c">
+        <svg fill="none" stroke-width="1.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"/>
+        </svg>
+        <span>Drag files here or <span class="browse" style="color:var(--accent);text-decoration:underline;font-weight:600">browse</span></span>
+      </div>
+    </div>
+    <div class="content">
+      <div class="section-header">
+        <h3>Your Files</h3>
+        <span class="count" id="file-count-c">0 files</span>
+      </div>
+      <div class="file-list" id="file-list-c"></div>
+    </div>
+  </div>
+
+  <!-- ============================
+       CONFIRM MODAL
+       ============================ -->
+  <div class="modal-overlay" id="confirm-modal">
+    <div class="modal-box">
+      <h3 id="confirm-title">Remove file?</h3>
+      <p id="confirm-body">This cannot be undone.</p>
+      <div class="modal-actions">
+        <button id="confirm-cancel">Cancel</button>
+        <button class="btn-danger" id="confirm-ok">Remove</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================
+       TOASTS
+       ============================ -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- ============================
+       SWITCHER
+       ============================ -->
+  <div class="prototype-switcher">
+    <button id="prev-btn" title="Previous variant" aria-label="Previous variant">&#8592;</button>
+    <div class="label" id="switcher-label"><span class="variant-name">A — Hero</span><small>?variant=A</small></div>
+    <button id="next-btn" title="Next variant" aria-label="Next variant">&#8594;</button>
+  </div>
+
+  <!-- Hidden file input -->
+  <input type="file" id="file-input" multiple style="display:none" aria-hidden="true">
+
+  <script>
+    // ============================
+    // Icons
+    // ============================
+    const I = {
+      pause:   '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>',
+      play:    '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="6,4 20,12 6,20"/></svg>',
+      x:       '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>',
+      dl:      '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12M12 16.5V3"/></svg>',
+      link:    '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.86-2.54a4.5 4.5 0 00-1.242-7.244l-4.5-4.5a4.5 4.5 0 00-6.364 6.364L4.757 8.96"/></svg>',
+      refresh: '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/></svg>',
+      dots:    '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="18" r="1.5"/></svg>',
+    };
+
+    // ============================
+    // Toast
+    // ============================
+    function toast(msg, type = 'info') {
+      const el = document.createElement('div');
+      el.className = `toast ${type}`;
+      el.textContent = msg;
+      document.getElementById('toast-container').appendChild(el);
+      setTimeout(() => {
+        el.classList.add('out');
+        setTimeout(() => el.remove(), 200);
+      }, 2500);
+    }
+
+    // ============================
+    // Confirm Modal
+    // ============================
+    let confirmResolve = null;
+
+    function confirm(title, body) {
+      return new Promise(resolve => {
+        confirmResolve = resolve;
+        document.getElementById('confirm-title').textContent = title;
+        document.getElementById('confirm-body').innerHTML = body;
+        document.getElementById('confirm-modal').classList.add('open');
+      });
+    }
+
+    document.getElementById('confirm-cancel').addEventListener('click', () => {
+      document.getElementById('confirm-modal').classList.remove('open');
+      if (confirmResolve) { confirmResolve(false); confirmResolve = null; }
+    });
+
+    document.getElementById('confirm-ok').addEventListener('click', () => {
+      document.getElementById('confirm-modal').classList.remove('open');
+      if (confirmResolve) { confirmResolve(true); confirmResolve = null; }
+    });
+
+    document.getElementById('confirm-modal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) {
+        e.currentTarget.classList.remove('open');
+        if (confirmResolve) { confirmResolve(false); confirmResolve = null; }
+      }
+    });
+
+    // ============================
+    // Variant Switcher
+    // ============================
+    const VARIANTS = [
+      { key: 'A', name: 'Hero',       desc: 'Hero centered drop zone' },
+      { key: 'B', name: 'Split Panel', desc: 'Drop left, queue right' },
+      { key: 'C', name: 'Cards',       desc: 'Top strip + card grid' },
+    ];
+
+    const params = new URLSearchParams(window.location.search);
+    let currentIdx = VARIANTS.findIndex(v => v.key === (params.get('variant') || 'A'));
+    if (currentIdx === -1) currentIdx = 0;
+
+    function showVariant(idx) {
+      currentIdx = idx;
+      const v = VARIANTS[idx];
+      document.querySelectorAll('[id^="variant-"]').forEach(el => el.style.display = 'none');
+      document.getElementById(`variant-${v.key.toLowerCase()}`).style.display = '';
+      document.getElementById('switcher-label').innerHTML = `<span class="variant-name">${v.key} — ${v.name}</span><small>?variant=${v.key}</small>`;
+      const url = new URL(window.location);
+      url.searchParams.set('variant', v.key);
+      history.replaceState(null, '', url);
+      render();
+    }
+
+    document.getElementById('prev-btn').addEventListener('click', () => showVariant((currentIdx - 1 + VARIANTS.length) % VARIANTS.length));
+    document.getElementById('next-btn').addEventListener('click', () => showVariant((currentIdx + 1) % VARIANTS.length));
+
+    document.addEventListener('keydown', e => {
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
+      if (e.key === 'ArrowLeft') { e.preventDefault(); showVariant((currentIdx - 1 + VARIANTS.length) % VARIANTS.length); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); showVariant((currentIdx + 1) % VARIANTS.length); }
+      if (e.key === 'Escape') {
+        const m = document.getElementById('confirm-modal');
+        if (m.classList.contains('open')) { m.classList.remove('open'); if (confirmResolve) { confirmResolve(false); confirmResolve = null; } }
+      }
+    });
+
+    // ============================
+    // File State
+    // ============================
+    let files = [];
+    let idCounter = 0;
+
+    function getExt(name) {
+      const parts = name.split('.');
+      return parts.length > 1 ? parts.pop().toLowerCase() : '';
+    }
+
+    function extCategory(ext) {
+      const docs = ['pdf','doc','docx','txt','md','xls','xlsx','csv','ppt','pptx','rtf','fig'];
+      const imgs = ['png','jpg','jpeg','gif','svg','webp','bmp','ico'];
+      const vids = ['mp4','mov','avi','mkv','webm','flv','wmv'];
+      const zips = ['zip','rar','7z','tar','gz','bz2','xz'];
+      if (docs.includes(ext)) return 'doc';
+      if (imgs.includes(ext)) return 'img';
+      if (vids.includes(ext)) return 'vid';
+      if (zips.includes(ext)) return 'zip';
+      return 'file';
+    }
+
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+      if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+      return (bytes / 1073741824).toFixed(2) + ' GB';
+    }
+
+    function addFiles(fileList) {
+      for (const f of fileList) {
+        const ext = getExt(f.name);
+        const entry = {
+          id: ++idCounter,
+          name: f.name,
+          size: f.size,
+          ext,
+          category: extCategory(ext),
+          progress: 0,
+          status: 'uploading',
+          speed: 0,
+          timer: null,
+        };
+        files.push(entry);
+        simulateUpload(entry);
+      }
+      render();
+      toast(`${fileList.length} file${fileList.length > 1 ? 's' : ''} added`, 'info');
+    }
+
+    async function removeFile(id) {
+      const f = files.find(x => x.id === id);
+      if (!f) return;
+      const ok = await confirm('Remove file?', `Remove <span class="fname">${f.name}</span>? This cannot be undone.`);
+      if (!ok) return;
+      if (f.timer) clearInterval(f.timer);
+      files = files.filter(x => x.id !== id);
+      render();
+      toast(`${f.name} removed`, 'info');
+    }
+
+    function pauseUpload(id) {
+      const f = files.find(x => x.id === id);
+      if (!f || f.status !== 'uploading') return;
+      clearInterval(f.timer);
+      f.timer = null;
+      f.status = 'paused';
+      render();
+      toast(`${f.name} paused`, 'info');
+    }
+
+    function resumeUpload(id) {
+      const f = files.find(x => x.id === id);
+      if (!f || (f.status !== 'paused' && f.status !== 'error')) return;
+      f.status = 'uploading';
+      simulateUpload(f);
+      render();
+      toast(`${f.name} resumed`, 'info');
+    }
+
+    function simulateUpload(entry) {
+      let progress = entry.progress;
+      entry.timer = setInterval(() => {
+        const ramp = progress < 20 ? 0.5 : 1;
+        const slowdown = progress > 85 ? 0.4 : 1;
+        const step = (1.5 + Math.random() * 2) * ramp * slowdown;
+        progress = Math.min(100, progress + step);
+        entry.progress = progress;
+        const baseSpeed = progress < 20 ? 5 + progress * 0.5 : 15;
+        entry.speed = (baseSpeed + Math.random() * 10).toFixed(1);
+
+        if (progress > 30 && progress < 70 && Math.random() < 0.001) {
+          entry.status = 'error';
+          clearInterval(entry.timer);
+          entry.timer = null;
+          render();
+          toast(`${entry.name} failed to upload`, 'error');
+          return;
+        }
+
+        if (progress >= 100) {
+          entry.progress = 100;
+          entry.status = 'done';
+          entry.speed = 0;
+          clearInterval(entry.timer);
+          entry.timer = null;
+          render();
+          toast(`${entry.name} uploaded`, 'success');
+          return;
+        }
+        render();
+      }, 100);
+    }
+
+    // ============================
+    // Render
+    // ============================
+    function fileCardHTML(f) {
+      const label = f.ext || '?';
+      const stateClass = f.status === 'error' ? ' state-error' : '';
+
+      let metaHTML = '';
+      if (f.status === 'uploading') {
+        metaHTML = `${formatSize(f.size)} · <span class="speed">${f.speed} MB/s</span> · ${Math.round(100 - f.progress)}% left`;
+      } else if (f.status === 'paused') {
+        metaHTML = `${formatSize(f.size)} · <span class="paused-label">Paused</span> at ${Math.round(f.progress)}%`;
+      } else if (f.status === 'error') {
+        metaHTML = `${formatSize(f.size)} · <span class="error-label">Failed — tap retry</span>`;
+      } else {
+        metaHTML = `${formatSize(f.size)} · <span class="done-label">Complete</span>`;
+      }
+
+      const fillClass = f.status === 'done' ? 'fill done' : f.status === 'error' ? 'fill error' : f.status === 'paused' ? 'fill paused' : 'fill';
+
+      let actionsHTML = '';
+      if (f.status === 'uploading') {
+        actionsHTML = `
+          <button class="act-btn" onclick="event.stopPropagation();pauseUpload(${f.id})" title="Pause" aria-label="Pause upload">${I.pause}</button>
+          <button class="act-btn danger" onclick="event.stopPropagation();removeFile(${f.id})" title="Cancel" aria-label="Cancel upload">${I.x}</button>
+        `;
+      } else if (f.status === 'paused') {
+        actionsHTML = `
+          <button class="act-btn" onclick="event.stopPropagation();resumeUpload(${f.id})" title="Resume" aria-label="Resume upload">${I.play}</button>
+          <button class="act-btn danger" onclick="event.stopPropagation();removeFile(${f.id})" title="Cancel" aria-label="Cancel upload">${I.x}</button>
+        `;
+      } else if (f.status === 'error') {
+        actionsHTML = `
+          <button class="act-btn" onclick="event.stopPropagation();resumeUpload(${f.id})" title="Retry" aria-label="Retry upload">${I.refresh}</button>
+          <button class="act-btn danger" onclick="event.stopPropagation();removeFile(${f.id})" title="Dismiss" aria-label="Remove">${I.x}</button>
+        `;
+      } else {
+        actionsHTML = `
+          <button class="act-btn" onclick="event.stopPropagation();toast('Downloaded ${f.name}','success')" title="Download" aria-label="Download file">${I.dl}</button>
+          <button class="act-btn" onclick="event.stopPropagation();toast('Link copied','success')" title="Copy link" aria-label="Copy link">${I.link}</button>
+          <button class="act-btn danger" onclick="event.stopPropagation();removeFile(${f.id})" title="Delete" aria-label="Delete file">${I.x}</button>
+        `;
+      }
+
+      return `
+        <div class="file-card${stateClass}" data-id="${f.id}">
+          <div class="file-icon ${f.category}">${label}</div>
+          <div class="file-info">
+            <div class="file-name" title="${f.name}">${f.name}</div>
+            <div class="file-meta">${metaHTML}</div>
+            <div class="progress-bar"><div class="${fillClass}" style="width:${f.progress}%"></div></div>
+          </div>
+          <div class="actions">${actionsHTML}</div>
+        </div>
+      `;
+    }
+
+    function render() {
+      const html = files.map(f => fileCardHTML(f)).join('');
+      const hint = files.length ? '' : '<div class="empty-hint">Files you drop will appear here</div>';
+
+      const listA = document.getElementById('file-list-a');
+      if (listA) listA.innerHTML = html + hint;
+
+      const listB = document.getElementById('file-list-b');
+      const emptyB = document.getElementById('empty-b');
+      if (listB) listB.innerHTML = html;
+      if (emptyB) emptyB.style.display = files.length ? 'none' : '';
+
+      const listC = document.getElementById('file-list-c');
+      const countC = document.getElementById('file-count-c');
+      if (listC) listC.innerHTML = html;
+      if (countC) countC.textContent = `${files.length} file${files.length !== 1 ? 's' : ''}`;
+
+      // Update gradient border animation speed based on drag state
+      const wrapperA = document.getElementById('gradient-wrapper-a');
+      if (wrapperA) {
+        if (document.body.classList.contains('drag-active')) {
+          wrapperA.classList.add('fast');
+        } else {
+          wrapperA.classList.remove('fast');
+        }
+      }
+    }
+
+    // ============================
+    // Drag & Drop
+    // ============================
+    let dragCounter = 0;
+
+    function setupDropzone(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+
+      el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('dragover'); });
+      el.addEventListener('dragleave', e => { e.preventDefault(); el.classList.remove('dragover'); });
+      el.addEventListener('drop', e => {
+        e.preventDefault();
+        el.classList.remove('dragover');
+        if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+      });
+      el.addEventListener('click', () => document.getElementById('file-input').click());
+    }
+
+    // Body-level drag state
+    document.addEventListener('dragenter', e => {
+      e.preventDefault();
+      dragCounter++;
+      document.body.classList.add('drag-active');
+      render();
+    });
+
+    document.addEventListener('dragleave', e => {
+      e.preventDefault();
+      dragCounter--;
+      if (dragCounter <= 0) { dragCounter = 0; document.body.classList.remove('drag-active'); render(); }
+    });
+
+    document.addEventListener('dragover', e => e.preventDefault());
+
+    document.addEventListener('drop', e => {
+      e.preventDefault();
+      dragCounter = 0;
+      document.body.classList.remove('drag-active');
+      render();
+    });
+
+    document.getElementById('file-input').addEventListener('change', e => {
+      if (e.target.files.length) addFiles(e.target.files);
+      e.target.value = '';
+    });
+
+    setupDropzone('dropzone-a');
+    setupDropzone('dropzone-b');
+    setupDropzone('dropzone-c');
+
+    // Boot
+    showVariant(currentIdx);
+  </script>
+</body>
+</html>
