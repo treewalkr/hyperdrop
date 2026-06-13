@@ -42,6 +42,7 @@ func NewRouter(cfg cli.Config) chi.Router {
 		r.Post("/upload", uploadHandler(cfg))
 		r.Get("/files", listHandler(cfg))
 		r.Get("/files/*", downloadHandler(cfg))
+		r.Delete("/files/*", deleteHandler(cfg))
 	})
 
 	return r
@@ -215,6 +216,36 @@ func downloadHandler(cfg cli.Config) http.HandlerFunc {
 		name := filepath.Base(dest)
 		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", escapeFilename(name)))
 		http.ServeContent(w, r, name, stat.ModTime(), f)
+	}
+}
+
+func deleteHandler(cfg cli.Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		requested := chi.URLParam(r, "*")
+		requested = strings.TrimPrefix(requested, "/")
+
+		if requested == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "filename required"})
+			return
+		}
+
+		dest, err := sandbox.SanitizePath(cfg.RootDir, requested)
+		if err != nil {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+			return
+		}
+
+		if _, err := os.Stat(dest); os.IsNotExist(err) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
+			return
+		}
+
+		if err := os.RemoveAll(dest); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "permission denied"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]string{"deleted": filepath.Base(dest)})
 	}
 }
 
