@@ -4,8 +4,31 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HyperDrop — Files</title>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
-<body>
+<body x-data="fileList()" x-init="load()">
     <h1>HyperDrop Files</h1>
+    <ul>
+        <template x-for="f in files" :key="f.name">
+            <li>
+                <span x-text="f.name"></span>
+                <span x-text="f.is_dir ? '📁' : f.category"></span>
+                <a x-show="!f.is_dir" :href="'/api/files/' + f.name + location.search" download>⬇</a>
+            </li>
+        </template>
+    </ul>
+    <p x-show="files.length === 0">No files yet.</p>
+
+    <script>
+    function fileList() {
+        return {
+            files: [],
+            async load() {
+                const resp = await fetch('/api/files' + location.search);
+                if (resp.ok) this.files = await resp.json();
+            }
+        }
+    }
+    </script>
 </body>
 </html>
