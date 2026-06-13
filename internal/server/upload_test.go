@@ -235,6 +235,43 @@ func TestUpload_MaxSizeExceeded_Returns413(t *testing.T) {
 	}
 }
 
+func TestUpload_MaxSizeChunked_Returns413(t *testing.T) {
+	root := t.TempDir()
+	cfg := cli.Config{RootDir: root, Token: "secret123", MaxSize: 256}
+	r := NewRouter(cfg)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	// Use a pipe so Content-Length is unknown (simulates chunked transfer).
+	pr, pw := io.Pipe()
+	writer := multipart.NewWriter(pw)
+
+	go func() {
+		defer pw.Close()
+		part, _ := writer.CreateFormFile("file", "big.txt")
+		// Write more than MaxSize — MaxBytesReader should cut it off.
+		part.Write(make([]byte, 4096))
+		writer.Close()
+	}()
+
+	req, _ := http.NewRequest("POST", ts.URL+"/api/upload?token=secret123", pr)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	// Explicitly unset Content-Length to simulate chunked.
+	req.ContentLength = -1
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	// MaxBytesReader triggers a 413 or the multipart read fails.
+	// The handler should not return 200.
+	if resp.StatusCode == http.StatusOK {
+		t.Errorf("status: got 200, expected non-200 (chunked bypass should be caught)")
+	}
+}
+
 func TestUpload_NoAuth_Returns401(t *testing.T) {
 	root := t.TempDir()
 	cfg := cli.Config{RootDir: root, Token: "secret123"}

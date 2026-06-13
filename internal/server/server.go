@@ -50,12 +50,6 @@ type uploadResult struct {
 
 func uploadHandler(cfg cli.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		reader, err := r.MultipartReader()
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "expected multipart/form-data"})
-			return
-		}
-
 		if cfg.MaxSize > 0 {
 			if r.ContentLength > cfg.MaxSize {
 				writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{
@@ -63,6 +57,13 @@ func uploadHandler(cfg cli.Config) http.HandlerFunc {
 				})
 				return
 			}
+			r.Body = http.MaxBytesReader(w, r.Body, cfg.MaxSize)
+		}
+
+		reader, err := r.MultipartReader()
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "expected multipart/form-data"})
+			return
 		}
 
 		var saved []uploadResult
