@@ -1011,14 +1011,32 @@
           const f = this.files.find((x) => x.id === id);
           if (!f) return;
           const link = location.origin + '/api/files/' + encodeURIComponent(f.name) + location.search;
-          if (navigator.clipboard) navigator.clipboard.writeText(link);
-          this.toast('Link copied', 'success');
+          // navigator.clipboard is undefined on non-secure (http:// LAN) contexts,
+          // which is the primary deployment target — fall back to a prompt so the
+          // user can still copy, and never toast success when nothing was written.
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(link).then(
+              () => this.toast('Link copied', 'success'),
+              () => this.fallbackCopy(link),
+            );
+          } else {
+            this.fallbackCopy(link);
+          }
+        },
+
+        fallbackCopy(link) {
+          window.prompt('Copy link:', link);
         },
 
         // ---- drag & drop ----
         dragEnter() { this.dragCount++; this.dragging = true; },
         dragLeave() { this.dragCount--; if (this.dragCount <= 0) { this.dragCount = 0; this.dragging = false; } },
-        bodyDrop() { this.dragCount = 0; this.dragging = false; this.dzOver = false; },
+        bodyDrop(e) {
+          this.dragCount = 0; this.dragging = false; this.dzOver = false;
+          if (e && e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+            this.addFiles(e.dataTransfer.files);
+          }
+        },
         dropFiles(e) {
           this.dzOver = false;
           if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
