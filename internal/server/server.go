@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -38,6 +40,8 @@ func NewRouter(cfg cli.Config) chi.Router {
 	r.Route("/api", func(r chi.Router) {
 		r.Use(tokenAuth(cfg.Token))
 		r.Post("/upload", uploadHandler(cfg))
+		r.Get("/files", listHandler(cfg))
+		r.Get("/files/*", downloadHandler(cfg))
 	})
 
 	return r
@@ -106,6 +110,111 @@ func uploadHandler(cfg cli.Config) http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusOK, map[string]interface{}{"files": saved})
+	}
+}
+
+type fileEntry struct {
+	Name     string `json:"name"`
+	Size     int64  `json:"size"`
+	ModTime  string `json:"mod_time"`
+	IsDir    bool   `json:"is_dir"`
+	Category string `json:"category"`
+}
+
+func listHandler(cfg cli.Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		entries, err := os.ReadDir(cfg.RootDir)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+
+		result := make([]fileEntry, 0)
+		for _, e := range entries {
+			info, err := e.Info()
+			if err != nil {
+				continue
+			}
+			result = append(result, fileEntry{
+				Name:     e.Name(),
+				Size:     info.Size(),
+				ModTime:  info.ModTime().Format("2006-01-02T15:04:05Z07:00"),
+				IsDir:    e.IsDir(),
+				Category: categorize(e.Name()),
+			})
+		}
+
+		writeJSON(w, http.StatusOK, result)
+	}
+}
+
+func categorize(name string) string {
+	ext := strings.ToLower(filepath.Ext(name))
+	switch ext {
+	case ".pdf", ".doc", ".docx", ".txt", ".md", ".xls", ".xlsx",
+		".csv", ".ppt", ".pptx", ".rtf", ".fig":
+		return "doc"
+	case ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp", ".ico":
+		return "img"
+	case ".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv":
+		return "vid"
+	case ".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz":
+		return "zip"
+	default:
+		return "file"
+	}
+}
+
+// escapeFilename produces a safe Content-Disposition filename token.
+// If the name contains only safe chars, returns a quoted string.
+// Otherwise returns RFC 6266 filename*=UTF-8'' URL-encoded form.
+func escapeFilename(name string) string {
+	safe := true
+	for _, r := range name {
+		if r < ' ' || r == '"' || r == '\\' || r > '~' {
+			safe = false
+			break
+		}
+	}
+	if safe {
+		return `"` + name + `"`
+	}
+	return "UTF-8''" + url.PathEscape(name)
+}
+
+func downloadHandler(cfg cli.Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// chi wildcards: /* captures as "/" + remainder
+		requested := chi.URLParam(r, "*")
+		requested = strings.TrimPrefix(requested, "/")
+
+		if requested == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "filename required"})
+			return
+		}
+
+		dest, err := sandbox.SanitizePath(cfg.RootDir, requested)
+		if err != nil {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+			return
+		}
+
+		f, err := os.Open(dest)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
+			return
+		}
+		defer f.Close()
+
+		stat, err := f.Stat()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+
+		name := filepath.Base(dest)
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", escapeFilename(name)))
+		http.ServeContent(w, r, name, stat.ModTime(), f)
 	}
 }
 
