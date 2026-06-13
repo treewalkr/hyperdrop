@@ -165,6 +165,23 @@ func categorize(name string) string {
 	}
 }
 
+// escapeFilename produces a safe Content-Disposition filename token.
+// If the name contains only safe chars, returns a quoted string.
+// Otherwise returns RFC 6266 filename*=UTF-8'' URL-encoded form.
+func escapeFilename(name string) string {
+	safe := true
+	for _, r := range name {
+		if r < ' ' || r == '"' || r == '\\' || r > '~' {
+			safe = false
+			break
+		}
+	}
+	if safe {
+		return `"` + name + `"`
+	}
+	return "UTF-8''" + url.PathEscape(name)
+}
+
 func downloadHandler(cfg cli.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// chi wildcards: /* captures as "/" + remainder
@@ -196,7 +213,7 @@ func downloadHandler(cfg cli.Config) http.HandlerFunc {
 		}
 
 		name := filepath.Base(dest)
-		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, name))
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", escapeFilename(name)))
 		http.ServeContent(w, r, name, stat.ModTime(), f)
 	}
 }
