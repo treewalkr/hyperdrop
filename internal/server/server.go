@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"mime"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/url"
@@ -13,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/treewalkr/hyperdrop/internal/cli"
+	"github.com/treewalkr/hyperdrop/internal/sandbox"
 	"github.com/treewalkr/hyperdrop/internal/static"
 )
 
@@ -34,14 +37,93 @@ func NewRouter(cfg cli.Config) chi.Router {
 	// API routes — token auth required
 	r.Route("/api", func(r chi.Router) {
 		r.Use(tokenAuth(cfg.Token))
-		// Placeholder handler — returns 200 OK for any matched route.
-		// Real handlers replace this as issues 04–06 land.
-		r.HandleFunc("/*", func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		})
+		r.Post("/upload", uploadHandler(cfg))
 	})
 
 	return r
+}
+
+type uploadResult struct {
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+}
+
+func uploadHandler(cfg cli.Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if cfg.MaxSize > 0 {
+			if r.ContentLength > cfg.MaxSize {
+				writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{
+					"error": fmt.Sprintf("file too large: max %d bytes", cfg.MaxSize),
+				})
+				return
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, cfg.MaxSize)
+		}
+
+		reader, err := r.MultipartReader()
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "expected multipart/form-data"})
+			return
+		}
+
+		var saved []uploadResult
+		for {
+			part, err := reader.NextPart()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return
+			}
+
+			filename := rawFilename(part)
+			if filename == "" {
+				continue
+			}
+
+			dest, err := sandbox.SanitizePath(cfg.RootDir, filename)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				return
+			}
+
+			f, err := os.Create(dest)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return
+			}
+
+			n, err := io.Copy(f, part)
+			f.Close()
+			if err != nil {
+				os.Remove(dest)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return
+			}
+
+			saved = append(saved, uploadResult{Name: filename, Size: n})
+		}
+
+		writeJSON(w, http.StatusOK, map[string]interface{}{"files": saved})
+	}
+}
+
+// rawFilename extracts the unprocessed filename from the Content-Disposition header.
+// Unlike multipart.Part.FileName(), it does NOT call filepath.Base(), so path
+// traversal characters reach sandbox.SanitizePath for validation.
+func rawFilename(part *multipart.Part) string {
+	_, params, err := mime.ParseMediaType(part.Header.Get("Content-Disposition"))
+	if err != nil {
+		return ""
+	}
+	return params["filename"]
+}
+
+func writeJSON(w http.ResponseWriter, status int, v interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(v)
 }
 
 func serveFile(fsys fs.FS, name string) http.HandlerFunc {
