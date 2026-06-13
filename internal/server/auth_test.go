@@ -1,14 +1,27 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/treewalkr/hyperdrop/internal/cli"
 )
+
+func makeUploadRequest(url string) *http.Request {
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, _ := writer.CreateFormFile("file", "test.txt")
+	part.Write([]byte("data"))
+	writer.Close()
+	req, _ := http.NewRequest("POST", url, body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	return req
+}
 
 func TestStaticAssets_NoAuthRequired(t *testing.T) {
 	r := NewRouter(cli.Config{Token: "secret123"})
@@ -29,11 +42,12 @@ func TestStaticAssets_NoAuthRequired(t *testing.T) {
 }
 
 func TestAPI_WrongToken_Returns401(t *testing.T) {
-	r := NewRouter(cli.Config{Token: "secret123"})
+	r := NewRouter(cli.Config{RootDir: t.TempDir(), Token: "secret123"})
 	ts := httptest.NewServer(r)
 	defer ts.Close()
 
-	resp, err := http.Get(ts.URL + "/api/files?token=wrongtoken")
+	req := makeUploadRequest(ts.URL + "/api/upload?token=wrongtoken")
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -54,14 +68,11 @@ func TestAPI_WrongToken_Returns401(t *testing.T) {
 }
 
 func TestAPI_ValidSessionCookie_Returns200(t *testing.T) {
-	r := NewRouter(cli.Config{Token: "secret123"})
+	r := NewRouter(cli.Config{RootDir: t.TempDir(), Token: "secret123"})
 	ts := httptest.NewServer(r)
 	defer ts.Close()
 
-	req, err := http.NewRequest("GET", ts.URL+"/api/files", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	req := makeUploadRequest(ts.URL + "/api/upload")
 	req.AddCookie(&http.Cookie{
 		Name:  "hyperdrop_session",
 		Value: "secret123",
@@ -79,11 +90,12 @@ func TestAPI_ValidSessionCookie_Returns200(t *testing.T) {
 }
 
 func TestAPI_ValidTokenQuery_SetsSessionCookie(t *testing.T) {
-	r := NewRouter(cli.Config{Token: "secret123"})
+	r := NewRouter(cli.Config{RootDir: t.TempDir(), Token: "secret123"})
 	ts := httptest.NewServer(r)
 	defer ts.Close()
 
-	resp, err := http.Get(ts.URL + "/api/files?token=secret123")
+	req := makeUploadRequest(ts.URL + "/api/upload?token=secret123")
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -115,11 +127,12 @@ func TestAPI_ValidTokenQuery_SetsSessionCookie(t *testing.T) {
 }
 
 func TestAPI_NoTokenNoCookie_Returns401(t *testing.T) {
-	r := NewRouter(cli.Config{Token: "secret123"})
+	r := NewRouter(cli.Config{RootDir: t.TempDir(), Token: "secret123"})
 	ts := httptest.NewServer(r)
 	defer ts.Close()
 
-	resp, err := http.Get(ts.URL + "/api/files")
+	req := makeUploadRequest(ts.URL + "/api/upload")
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

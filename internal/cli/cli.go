@@ -14,6 +14,7 @@ type Config struct {
 	Host    string // --host, default "0.0.0.0"
 	Port    int    // --port, default 8080
 	Token   string // --token, default "" (auto-generate)
+	MaxSize int64  // --max-size, default 0 (unlimited, in bytes)
 	Dev     bool   // --dev, default false
 }
 
@@ -25,6 +26,7 @@ func ParseArgs(args []string) (Config, error) {
 	host := fs.String("host", "0.0.0.0", "bind address")
 	port := fs.Int("port", 8080, "listen port")
 	token := fs.String("token", "", "access token (auto-generated if empty)")
+	maxSize := fs.Int64("max-size", 0, "max upload size in bytes (0 = unlimited)")
 	dev := fs.Bool("dev", false, "serve static assets from disk")
 
 	if err := fs.Parse(args); err != nil {
@@ -49,6 +51,7 @@ func ParseArgs(args []string) (Config, error) {
 		Host:    *host,
 		Port:    *port,
 		Token:   *token,
+		MaxSize: *maxSize,
 		Dev:     *dev,
 	}, nil
 }
