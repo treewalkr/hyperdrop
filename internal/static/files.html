@@ -187,6 +187,76 @@
 
     .toolbar-spacer { flex: 1; }
 
+    /* ========================================
+       BREADCRUMB TRAIL
+       ======================================== */
+    .breadcrumb-bar {
+      position: sticky;
+      top: var(--header-h);
+      z-index: 90;
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      flex-wrap: wrap;
+      padding: 0.6rem 1.5rem;
+      background: rgba(8,11,26,0.6);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      position: relative;
+      z-index: 1;
+    }
+
+    .crumb {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      font-weight: 500;
+      padding: 0.25rem 0.45rem;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: inherit;
+    }
+
+    .crumb:hover {
+      color: var(--text);
+      background: var(--surface-hover);
+    }
+
+    .crumb.current {
+      color: var(--accent);
+      cursor: default;
+    }
+    .crumb.current:hover { background: none; }
+
+    .crumb-sep {
+      color: var(--text-muted);
+      opacity: 0.5;
+      font-size: 0.75rem;
+      user-select: none;
+    }
+
+    .crumb svg {
+      width: 15px;
+      height: 15px;
+      stroke: currentColor;
+      fill: none;
+    }
+
+    /* Folder names are clickable navigation entry points. */
+    .is-folder {
+      color: var(--accent);
+      cursor: pointer;
+      font-weight: 600;
+      transition: opacity 0.2s ease;
+    }
+    .is-folder:hover { opacity: 0.75; }
+
     /* Sort pills — glass background, active gradient */
     .sort-pills {
       display: flex;
@@ -1001,7 +1071,28 @@
           x-text="filtered.length + ' file' + (filtered.length !== 1 ? 's' : '') + ' · ' + formatSize(totalSize)"></span>
   </header>
 
-  <!-- VARIANT A — TABLE -->
+  <!-- BREADCRUMB TRAIL -->
+  <nav class="breadcrumb-bar" aria-label="Directory path">
+    <template x-for="(crumb, i) in crumbs" :key="i">
+      <span style="display:flex; align-items:center; gap:0.3rem;">
+        <button class="crumb"
+                :class="{ current: i === crumbs.length - 1 }"
+                @click="navigateToSegment(i)"
+                :aria-current="i === crumbs.length - 1 ? 'page' : 'false'"
+                :title="i === 0 ? 'Root' : crumb.label">
+          <template x-if="i === 0">
+            <svg stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
+          </template>
+          <template x-if="i !== 0">
+            <span x-text="crumb.label"></span>
+          </template>
+        </button>
+        <template x-if="i < crumbs.length - 1">
+          <span class="crumb-sep" aria-hidden="true">›</span>
+        </template>
+      </span>
+    </template>
+  </nav>
   <div class="variant-a" x-show="variant === 'A'" x-cloak>
     <table>
       <thead>
@@ -1035,7 +1126,11 @@
             <td>
               <div class="col-name">
                 <span class="badge" :class="badgeClass(f)" x-text="badgeText(f)"></span>
-                <span class="fname" :title="f.name" x-text="f.name"></span>
+                <span class="fname"
+                      :class="{ 'is-folder': f.is_dir }"
+                      :title="f.is_dir ? 'Open ' + f.name : f.name"
+                      @click="f.is_dir && navigateInto(f.name)"
+                      x-text="f.name"></span>
               </div>
             </td>
             <td class="size" x-text="f.is_dir ? '—' : formatSize(f.size)"></td>
@@ -1043,7 +1138,7 @@
             <td class="from"><span class="from-dot"></span>this device</td>
             <td class="row-actions">
               <a class="act-btn" x-show="!f.is_dir"
-                 :href="'/api/files/' + encodeURIComponent(f.name) + location.search"
+                 :href="'/api/files/' + encPath(f.name) + qs"
                  download :aria-label="'Download ' + f.name"
                  title="Download">
                 <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12M12 16.5V3"/></svg>
@@ -1078,7 +1173,7 @@
           </div>
           <div class="card-actions">
             <a x-show="!f.is_dir"
-               :href="'/api/files/' + encodeURIComponent(f.name) + location.search"
+               :href="'/api/files/' + encPath(f.name) + qs"
                download :aria-label="'Download ' + f.name" title="Download">
               <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12M12 16.5V3"/></svg>
             </a>
@@ -1087,7 +1182,11 @@
             </button>
           </div>
           <div class="card-body">
-            <div class="fname" :title="f.name" x-text="f.name"></div>
+            <div class="fname"
+                 :class="{ 'is-folder': f.is_dir }"
+                 :title="f.is_dir ? 'Open ' + f.name : f.name"
+                 @click="f.is_dir && navigateInto(f.name)"
+                 x-text="f.name"></div>
             <div class="meta">
               <span x-text="f.is_dir ? 'folder' : formatSize(f.size)"></span>
               <span x-text="relativeTime(f.date)"></span>
@@ -1117,14 +1216,18 @@
               <div class="file-chip">
                 <div class="chip-icon" :class="badgeClass(f)" x-text="badgeText(f)"></div>
                 <div class="chip-info">
-                  <div class="chip-name" :title="f.name" x-text="f.name"></div>
+                  <div class="chip-name"
+                       :class="{ 'is-folder': f.is_dir }"
+                       :title="f.is_dir ? 'Open ' + f.name : f.name"
+                       @click="f.is_dir && navigateInto(f.name)"
+                       x-text="f.name"></div>
                   <div class="chip-meta" x-text="f.is_dir ? 'folder' : formatSize(f.size)"></div>
                 </div>
               </div>
             </div>
             <div class="feed-actions">
               <a class="act-btn" x-show="!f.is_dir"
-                 :href="'/api/files/' + encodeURIComponent(f.name) + location.search"
+                 :href="'/api/files/' + encPath(f.name) + qs"
                  download :aria-label="'Download ' + f.name" title="Download">
                 <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12M12 16.5V3"/></svg>
               </a>
@@ -1175,6 +1278,8 @@
       return {
         files: [],
         variant: 'A',
+        currentPath: '',       // active sub-directory relative to root ('' = root)
+        token: '',
         sortKey: 'date',
         sortDir: -1,           // -1 = newest/name-z/largest first; +1 reversed
         sortPills: [
@@ -1196,6 +1301,8 @@
           const params = new URLSearchParams(location.search);
           const v = (params.get('variant') || 'A').toUpperCase();
           if (VARIANTS.some(x => x.key === v)) this.variant = v;
+          this.token = params.get('token') || '';
+          this.currentPath = (params.get('path') || '').replace(/^\/+|\/+$/g, '');
 
           const onKey = (e) => {
             const tag = document.activeElement && document.activeElement.tagName;
@@ -1208,10 +1315,68 @@
           this.load();
         },
 
+        // Query string carrying token + path + variant, so every API call and
+        // shareable URL stays consistent with the current directory.
+        get qs() {
+          const p = new URLSearchParams();
+          if (this.token) p.set('token', this.token);
+          if (this.variant) p.set('variant', this.variant);
+          if (this.currentPath) p.set('path', this.currentPath);
+          const s = p.toString();
+          return s ? ('?' + s) : '';
+        },
+
+        // Resolve a name relative to the current directory.
+        fullPath(name) {
+          return this.currentPath ? (this.currentPath + '/' + name) : name;
+        },
+
+        // URL-encode a relative path segment-by-segment (keeps / as separator).
+        encPath(name) {
+          return this.fullPath(name).split('/').map(encodeURIComponent).join('/');
+        },
+
+        // Breadcrumb segments: index 0 = Home (root), then one per path part.
+        get crumbs() {
+          const segs = [{ label: 'Home', path: '' }];
+          if (this.currentPath) {
+            const parts = this.currentPath.split('/').filter(Boolean);
+            let acc = '';
+            for (const part of parts) {
+              acc = acc ? (acc + '/' + part) : part;
+              segs.push({ label: part, path: acc });
+            }
+          }
+          return segs;
+        },
+
+        navigateInto(name) {
+          this.selected = {};
+          this.currentPath = this.fullPath(name);
+          this.updateURL();
+          window.scrollTo(0, 0);
+          this.load();
+        },
+
+        navigateToSegment(i) {
+          const target = this.crumbs[i];
+          if (!target || target.path === this.currentPath) return;
+          this.selected = {};
+          this.currentPath = target.path;
+          this.updateURL();
+          window.scrollTo(0, 0);
+          this.load();
+        },
+
+        updateURL() {
+          const url = location.pathname + this.qs;
+          try { history.replaceState(null, '', url); } catch (e) { /* non-secure ctx */ }
+        },
+
         // ---- data ----
         async load() {
           try {
-            const resp = await fetch('/api/files' + location.search);
+            const resp = await fetch('/api/files' + this.qs);
             if (!resp.ok) { this.toast('failed to load files (' + resp.status + ')', 'error'); return; }
             const data = await resp.json();
             this.files = (data || []).map((e) => ({
@@ -1369,7 +1534,7 @@
 
         async _deleteName(name) {
           try {
-            const resp = await fetch('/api/files/' + encodeURIComponent(name) + location.search, { method: 'DELETE' });
+            const resp = await fetch('/api/files/' + this.encPath(name) + this.qs, { method: 'DELETE' });
             return resp.ok;
           } catch (err) {
             return false;
@@ -1386,7 +1551,7 @@
           // popups. Stagger the triggers so most land; nothing fatal if some don't.
           targets.forEach((f, i) => {
             setTimeout(() => {
-              window.location.href = '/api/files/' + encodeURIComponent(f.name) + location.search;
+              window.location.href = '/api/files/' + this.encPath(f.name) + this.qs;
             }, i * 400);
           });
           this.toast('downloading ' + targets.length + ' file' + (targets.length > 1 ? 's' : ''), 'info');
@@ -1456,9 +1621,6 @@
             { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
           ));
         },
-
-        // keep location.search reachable in templates
-        get location() { return location; },
       };
     }
   </script>

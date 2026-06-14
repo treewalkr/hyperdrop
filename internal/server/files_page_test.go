@@ -36,18 +36,18 @@ func TestFilesPage_AuroraMarkers(t *testing.T) {
 	want := []string{
 		"aurora-blob",
 		"blob-1", "blob-2", "blob-3", "blob-4",
-		"variant-a",      // table view
-		"variant-b",      // grid view — all three variants are shipped on Files
-		"variant-c",      // feed view
+		"variant-a",        // table view
+		"variant-b",        // grid view — all three variants are shipped on Files
+		"variant-c",        // feed view
 		"variant-switcher", // floating variant switcher (Files keeps it, unlike Send)
-		"app-header",     // glass header
-		"alpinejs",       // Alpine.js via CDN
-		"x-data",         // Alpine reactive root
-		"toast-container", // toast notifications
-		"modal-overlay",  // confirmation modal
-		"/api/files",     // wired to the real backend listing endpoint
-		"this device",    // placeholder sender (no sender field exists yet)
-		"No files yet",   // empty state
+		"app-header",       // glass header
+		"alpinejs",         // Alpine.js via CDN
+		"x-data",           // Alpine reactive root
+		"toast-container",  // toast notifications
+		"modal-overlay",    // confirmation modal
+		"/api/files",       // wired to the real backend listing endpoint
+		"this device",      // placeholder sender (no sender field exists yet)
+		"No files yet",     // empty state
 	}
 	for _, marker := range want {
 		if !strings.Contains(page, marker) {
@@ -55,11 +55,24 @@ func TestFilesPage_AuroraMarkers(t *testing.T) {
 		}
 	}
 
-	// The prototype shipped a static MOCK_FILES array and per-file sender
+	// Directory navigation (issue 09): breadcrumb trail + folder navigation
+	// wired through Alpine state.
+	want = []string{
+		"breadcrumb",        // breadcrumb trail element
+		"currentPath",       // Alpine state holding the active sub-path
+		"navigateInto",      // click-folder handler
+		"navigateToSegment", // click-crumb handler
+		"crumbs",            // derived breadcrumb segments
+	}
+	for _, marker := range want {
+		if !strings.Contains(page, marker) {
+			t.Errorf("Files page missing marker %q", marker)
+		}
+	}
 	// variance. Production must drive all state from the API; no mock data or
 	// randomized state may remain.
 	banned := []string{
-		"MOCK_FILES", // prototype-only mock dataset
+		"MOCK_FILES",  // prototype-only mock dataset
 		"Math.random", // no randomized mock state
 	}
 	for _, marker := range banned {

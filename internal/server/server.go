@@ -65,6 +65,13 @@ func uploadHandler(cfg cli.Config) http.HandlerFunc {
 			r.Body = http.MaxBytesReader(w, r.Body, cfg.MaxSize)
 		}
 
+		// Resolve optional subdirectory target (?path=sub/dir). Default root.
+		base, err := resolveTargetDir(cfg.RootDir, r.URL.Query().Get("path"))
+		if err != nil {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+			return
+		}
+
 		reader, err := r.MultipartReader()
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "expected multipart/form-data"})
@@ -87,7 +94,7 @@ func uploadHandler(cfg cli.Config) http.HandlerFunc {
 				continue
 			}
 
-			dest, err := sandbox.SanitizePath(cfg.RootDir, filename)
+			dest, err := sandbox.SanitizePath(base, filename)
 			if err != nil {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 				return
@@ -124,7 +131,13 @@ type fileEntry struct {
 
 func listHandler(cfg cli.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		entries, err := os.ReadDir(cfg.RootDir)
+		target, err := resolveTargetDir(cfg.RootDir, r.URL.Query().Get("path"))
+		if err != nil {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+			return
+		}
+
+		entries, err := os.ReadDir(target)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
@@ -149,6 +162,15 @@ func listHandler(cfg cli.Config) http.HandlerFunc {
 	}
 }
 
+// resolveTargetDir resolves the directory for an optional sub-path relative to
+// rootDir. Empty sub returns root; traversal-escaping sub returns an error.
+func resolveTargetDir(rootDir, sub string) (string, error) {
+	if sub == "" {
+		return rootDir, nil
+	}
+	return sandbox.SanitizePath(rootDir, sub)
+}
+
 func categorize(name string) string {
 	ext := strings.ToLower(filepath.Ext(name))
 	switch ext {
@@ -168,7 +190,7 @@ func categorize(name string) string {
 
 // escapeFilename produces a safe Content-Disposition filename token.
 // If the name contains only safe chars, returns a quoted string.
-// Otherwise returns RFC 6266 filename*=UTF-8'' URL-encoded form.
+// Otherwise returns RFC 6266 filename*=UTF-8” URL-encoded form.
 func escapeFilename(name string) string {
 	safe := true
 	for _, r := range name {

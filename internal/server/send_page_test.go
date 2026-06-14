@@ -42,6 +42,8 @@ func TestSendPage_AuroraMarkers(t *testing.T) {
 		"toast-container", // toast notifications
 		"modal-overlay",   // confirmation modal
 		"/api/upload",     // wired to the real backend upload endpoint
+		"currentPath",     // Alpine state for subdir-targeted uploads (issue 09)
+		"targetHint",      // UI hint showing the active target directory
 	}
 	for _, marker := range want {
 		if !strings.Contains(page, marker) {

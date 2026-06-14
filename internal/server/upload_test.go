@@ -129,13 +129,87 @@ func TestUpload_MultipleFiles_AllSaved(t *testing.T) {
 	}
 
 	var result struct {
-		Files []struct{ Name string `json:"name"` } `json:"files"`
+		Files []struct {
+			Name string `json:"name"`
+		} `json:"files"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		t.Fatalf("response JSON decode: %v", err)
 	}
 	if len(result.Files) != 2 {
 		t.Errorf("files: got %d, want 2", len(result.Files))
+	}
+}
+
+func TestUpload_PathQuery_SavesToSubdir(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(root+"/photos/vacation", 0755)
+	cfg := cli.Config{RootDir: root, Token: "secret123"}
+	r := NewRouter(cfg)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("file", "sunset.jpg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	part.Write([]byte("pic"))
+	writer.Close()
+
+	req, _ := http.NewRequest("POST", ts.URL+"/api/upload?path=photos/vacation&token=secret123", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status: got %d, want 200. body: %s", resp.StatusCode, b)
+	}
+
+	// Saved inside the subdir, not at root.
+	saved, err := os.ReadFile(filepath.Join(root, "photos", "vacation", "sunset.jpg"))
+	if err != nil {
+		t.Fatalf("file not saved to subdir: %v", err)
+	}
+	if string(saved) != "pic" {
+		t.Errorf("content: got %q, want %q", string(saved), "pic")
+	}
+	if _, err := os.Stat(filepath.Join(root, "sunset.jpg")); !os.IsNotExist(err) {
+		t.Errorf("file must not land at root: %v", err)
+	}
+}
+
+func TestUpload_PathQuery_TraversalRejected(t *testing.T) {
+	root := t.TempDir()
+	cfg := cli.Config{RootDir: root, Token: "secret123"}
+	r := NewRouter(cfg)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, _ := writer.CreateFormFile("file", "evil.txt")
+	part.Write([]byte("pwned"))
+	writer.Close()
+
+	req, _ := http.NewRequest("POST", ts.URL+"/api/upload?path=../../etc&token=secret123", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusForbidden {
+		b, _ := io.ReadAll(resp.Body)
+		t.Errorf("status: got %d, want 403. body: %s", resp.StatusCode, b)
 	}
 }
 

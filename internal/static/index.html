@@ -247,6 +247,13 @@
       font-size: 0.95rem;
     }
 
+    .send-stage .intro .target-hint {
+      margin-top: 0.35rem;
+      font-size: 0.82rem;
+      color: var(--accent);
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    }
+
     /* Nebula dropzone — circular portal with rotating conic ring + glow */
     .nebula-dropzone {
       position: relative;
@@ -698,6 +705,7 @@
     <div class="intro">
       <h2>Send files across the void</h2>
       <p>Drop files into the portal — they'll be saved locally</p>
+      <p class="target-hint" x-show="currentPath" x-cloak x-text="targetHint"></p>
     </div>
 
     <div class="nebula-dropzone"
@@ -841,6 +849,8 @@
         dragging: false,
         dragCount: 0,
         dzOver: false,
+        currentPath: '',       // active sub-directory for uploads ('' = root)
+        token: '',
         toasts: [],
         nextToastId: 0,
         confirmOpen: false,
@@ -850,7 +860,32 @@
         _confirmResolve: null,
 
         init() {
-          // Hook for future boot steps (e.g. load existing files). None needed yet.
+          const params = new URLSearchParams(location.search);
+          this.token = params.get('token') || '';
+          this.currentPath = (params.get('path') || '').replace(/^\/+|\/+$/g, '');
+        },
+
+        // Query string carrying token + path so uploads land in the right subdir.
+        get qs() {
+          const p = new URLSearchParams();
+          if (this.token) p.set('token', this.token);
+          if (this.currentPath) p.set('path', this.currentPath);
+          const s = p.toString();
+          return s ? ('?' + s) : '';
+        },
+
+        // Resolve a name relative to the current upload directory.
+        fullPath(name) {
+          return this.currentPath ? (this.currentPath + '/' + name) : name;
+        },
+
+        encPath(name) {
+          return this.fullPath(name).split('/').map(encodeURIComponent).join('/');
+        },
+
+        // Human label for the active target directory.
+        get targetHint() {
+          return this.currentPath ? ('Uploading to ' + this.currentPath) : '';
         },
 
         extOf(name) {
@@ -935,8 +970,9 @@
           };
           xhr.onabort = () => { entry.xhr = null; };
 
-          // location.search carries ?token= on first load; the auth cookie covers later calls.
-          xhr.open('POST', '/api/upload' + location.search);
+          // location.search carries ?token= + ?path= on first load; the auth
+          // cookie covers later calls and qs pins the target subdirectory.
+          xhr.open('POST', '/api/upload' + this.qs);
           xhr.send(fd);
         },
 
@@ -989,7 +1025,7 @@
           if (!ok) return;
           if (f.xhr) { f.xhr.abort(); f.xhr = null; }
           try {
-            const resp = await fetch('/api/files/' + encodeURIComponent(f.name) + location.search, { method: 'DELETE' });
+            const resp = await fetch('/api/files/' + this.encPath(f.name) + this.qs, { method: 'DELETE' });
             if (resp.ok) {
               this.files = this.files.filter((x) => x.id !== id);
               this.toast(f.name + ' deleted', 'success');
@@ -1004,13 +1040,13 @@
         downloadFile(id) {
           const f = this.files.find((x) => x.id === id);
           if (!f) return;
-          window.open('/api/files/' + encodeURIComponent(f.name) + location.search, '_blank');
+          window.open('/api/files/' + this.encPath(f.name) + this.qs, '_blank');
         },
 
         copyLink(id) {
           const f = this.files.find((x) => x.id === id);
           if (!f) return;
-          const link = location.origin + '/api/files/' + encodeURIComponent(f.name) + location.search;
+          const link = location.origin + '/api/files/' + this.encPath(f.name) + this.qs;
           // navigator.clipboard is undefined on non-secure (http:// LAN) contexts,
           // which is the primary deployment target — fall back to a prompt so the
           // user can still copy, and never toast success when nothing was written.

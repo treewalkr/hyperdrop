@@ -2,8 +2,10 @@ package server
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"testing"
 	"time"
@@ -105,17 +107,77 @@ func TestList_PopulatedDir_ReturnsEntries(t *testing.T) {
 	}
 }
 
+func TestList_SubdirQuery_ReturnsSubdirContents(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(root+"/photos/vacation", 0755)
+	os.WriteFile(root+"/photos/vacation/sunset.jpg", []byte("x"), 0644)
+	os.WriteFile(root+"/photos/keep.txt", []byte("y"), 0644) // sibling dir, must NOT appear
+
+	cfg := cli.Config{RootDir: root, Token: "secret123"}
+	r := NewRouter(cfg)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	req, _ := http.NewRequest("GET", ts.URL+"/api/files?path=photos/vacation&token=secret123", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status: got %d, want 200. body: %s", resp.StatusCode, b)
+	}
+
+	var entries []fileEntry
+	if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("entries: got %d, want 1 (only vacation contents)", len(entries))
+	}
+	if entries[0].Name != "sunset.jpg" {
+		t.Errorf("entry name: got %q, want %q", entries[0].Name, "sunset.jpg")
+	}
+}
+
+func TestList_PathTraversalOnSubdir_Returns403(t *testing.T) {
+	root := t.TempDir()
+	os.WriteFile(root+"/inside.txt", []byte("x"), 0644)
+	cfg := cli.Config{RootDir: root, Token: "secret123"}
+	r := NewRouter(cfg)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	for _, q := range []string{"../etc", "/etc", "sub/../../.."} {
+		t.Run(q, func(t *testing.T) {
+			req, _ := http.NewRequest("GET", ts.URL+"/api/files?path="+url.QueryEscape(q)+"&token=secret123", nil)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusForbidden {
+				b, _ := io.ReadAll(resp.Body)
+				t.Errorf("status for path=%q: got %d, want 403. body: %s", q, resp.StatusCode, b)
+			}
+		})
+	}
+}
+
 func TestList_CategoryMapping(t *testing.T) {
 	root := t.TempDir()
 	// Create files covering each category
 	for _, name := range []string{
-		"report.pdf",      // doc
-		"photo.jpg",       // img
-		"clip.mp4",        // vid
-		"archive.zip",     // zip
-		"unknown.xyz",     // file
-		"noext",           // file (no extension)
-		"PHOTO.PNG",       // img (uppercase)
+		"report.pdf",  // doc
+		"photo.jpg",   // img
+		"clip.mp4",    // vid
+		"archive.zip", // zip
+		"unknown.xyz", // file
+		"noext",       // file (no extension)
+		"PHOTO.PNG",   // img (uppercase)
 	} {
 		os.WriteFile(root+"/"+name, []byte("x"), 0644)
 	}
