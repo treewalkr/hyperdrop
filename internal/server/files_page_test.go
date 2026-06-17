@@ -69,6 +69,20 @@ func TestFilesPage_AuroraMarkers(t *testing.T) {
 			t.Errorf("Files page missing marker %q", marker)
 		}
 	}
+	// Real-time updates (issue 10): WebSocket connection driving the file list.
+	want = []string{
+		"/api/ws",       // WebSocket endpoint wired to the backend
+		"connectWS",     // connection bootstrap on page load
+		"file_uploaded", // handler for remote uploads
+		"file_deleted",  // handler for remote deletions
+		"received from", // cross-device toast copy
+		"reconnect",     // auto-reconnect with backoff
+	}
+	for _, marker := range want {
+		if !strings.Contains(page, marker) {
+			t.Errorf("Files page missing WS marker %q", marker)
+		}
+	}
 	// variance. Production must drive all state from the API; no mock data or
 	// randomized state may remain.
 	banned := []string{

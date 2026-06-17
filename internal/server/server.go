@@ -23,6 +23,13 @@ import (
 
 // NewRouter builds a Chi mux with static file routes for the given config.
 func NewRouter(cfg cli.Config) chi.Router {
+	r, _ := newRouterWithHub(cfg)
+	return r
+}
+
+// newRouterWithHub builds the router and returns the event Hub alongside it, so
+// tests can inspect subscriber lifecycle (connect/disconnect cleanup).
+func newRouterWithHub(cfg cli.Config) (chi.Router, *Hub) {
 	r := chi.NewRouter()
 
 	var assets fs.FS
@@ -32,6 +39,8 @@ func NewRouter(cfg cli.Config) chi.Router {
 		assets = static.Assets
 	}
 
+	hub := newHub()
+
 	// Static assets — no auth required
 	r.Get("/", serveFile(assets, "index.html"))
 	r.Get("/files", serveFile(assets, "files.html"))
@@ -39,13 +48,14 @@ func NewRouter(cfg cli.Config) chi.Router {
 	// API routes — token auth required
 	r.Route("/api", func(r chi.Router) {
 		r.Use(tokenAuth(cfg.Token))
-		r.Post("/upload", uploadHandler(cfg))
+		r.Get("/ws", wsHandler(hub))
+		r.Post("/upload", uploadHandler(cfg, hub))
 		r.Get("/files", listHandler(cfg))
 		r.Get("/files/*", downloadHandler(cfg))
-		r.Delete("/files/*", deleteHandler(cfg))
+		r.Delete("/files/*", deleteHandler(cfg, hub))
 	})
 
-	return r
+	return r, hub
 }
 
 type uploadResult struct {
@@ -53,7 +63,7 @@ type uploadResult struct {
 	Size int64  `json:"size"`
 }
 
-func uploadHandler(cfg cli.Config) http.HandlerFunc {
+func uploadHandler(cfg cli.Config, hub *Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if cfg.MaxSize > 0 {
 			if r.ContentLength > cfg.MaxSize {
@@ -115,6 +125,14 @@ func uploadHandler(cfg cli.Config) http.HandlerFunc {
 			}
 
 			saved = append(saved, uploadResult{Name: filename, Size: n})
+			hub.broadcast(map[string]any{
+				"type": "file_uploaded",
+				"file": map[string]any{
+					"name":     filename,
+					"size":     n,
+					"category": categorize(filename),
+				},
+			})
 		}
 
 		writeJSON(w, http.StatusOK, map[string]interface{}{"files": saved})
@@ -241,7 +259,7 @@ func downloadHandler(cfg cli.Config) http.HandlerFunc {
 	}
 }
 
-func deleteHandler(cfg cli.Config) http.HandlerFunc {
+func deleteHandler(cfg cli.Config, hub *Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		requested := chi.URLParam(r, "*")
 		requested = strings.TrimPrefix(requested, "/")
@@ -266,6 +284,11 @@ func deleteHandler(cfg cli.Config) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "permission denied"})
 			return
 		}
+
+		hub.broadcast(map[string]any{
+			"type": "file_deleted",
+			"name": filepath.Base(dest),
+		})
 
 		writeJSON(w, http.StatusOK, map[string]string{"deleted": filepath.Base(dest)})
 	}
