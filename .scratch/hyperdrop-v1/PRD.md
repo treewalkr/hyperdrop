@@ -91,7 +91,7 @@ All file operations are sandboxed to the root directory. A WebSocket connection 
 ### Distribution & Installation
 
 49. As a user, I want to download a single binary for my OS (macOS, Linux, Windows), so that I can run it without installing anything
-50. As a macOS user, I want to install via Homebrew (`brew install hyperdrop`), so that it fits my existing workflow
+50. As a user with Go installed, I want to install via `go install github.com/treewalkr/hyperdrop/cmd/hyperdrop@latest`, so that I can get the latest version with a single command and no package manager setup
 51. As a user, I want the binary to be small (under 15MB), so that it downloads quickly
 
 ### Developer Experience
@@ -106,7 +106,7 @@ All file operations are sandboxed to the root directory. A WebSocket connection 
 
 - **Backend**: Go with Chi HTTP router. Every handler is `func(w http.ResponseWriter, r *http.Request)` — stdlib-compatible, no framework lock-in.
 - **Frontend**: Alpine.js for reactivity, added via `<script defer>`. No build step. HTML/CSS/JS embedded into the Go binary via `embed.FS`.
-- **Distribution**: goreleaser for GitHub Releases and Homebrew tap.
+- **Distribution**: goreleaser for GitHub Releases (cross-platform binaries on `v*` tag push); `go install` for source builds. Homebrew was dropped — see _Out of Scope_.
 
 ### API Surface
 
@@ -180,6 +180,7 @@ The Aurora design system from `DESIGN.md` is the visual language:
 | `--port` | `8080` | Listen port |
 | `--max-size` | unlimited | Max upload size (e.g. `500MB`) |
 | `--dev` | false | Serve static assets from disk |
+| `--version` | — | Print version (ldflags for releases, build-info for `go install`) and exit |
 
 ### Project Structure
 
@@ -248,10 +249,11 @@ No existing tests in the codebase (greenfield project). The Go standard library 
 - **Rate limiting** — no request throttling in v1.
 - **Custom theme selection** — Aurora is the only theme in production; other prototype variants (Paper, Neon, Gradient) remain in the prototype gallery only.
 - **`prefers-reduced-motion` handling** — aurora blob animations run unconditionally in v1.
+- **Homebrew tap** — the original issue (#12) proposed a separate `treewalkr/homebrew-tap` repo; dropped in favor of `go install` + GitHub Releases, which cover the same audience with no tap repo or PAT to maintain. A same-repo cask can be added later if the Mac-without-Go audience matters.
 
 ## Further Notes
 
 - The prototype gallery at `prototype/` contains five visual directions. Aurora was chosen as the production design. The others (Paper, Neon, Gradient, v0) are retained for reference but won't be built into the binary.
 - The prototype variant switcher (floating pill with arrow buttons) is a design exploration tool. In production, each page uses a single default variant: Nebula dropzone for Send, Table view for Files (users can still switch view variants on the Files page).
 - The `--dev` flag is critical for developer velocity — it serves HTML/CSS/JS from disk so frontend changes are visible on browser refresh without recompiling Go.
-- Future versions may add: folder upload, QR code sharing, file preview thumbnails, upload pause/resume, and a TUI dashboard showing connected clients.
+- Future versions may add: folder upload, QR code sharing, file preview thumbnails, upload pause/resume, a TUI dashboard showing connected clients, and a Homebrew cask (same-repo tap) for the Mac-without-Go audience.
