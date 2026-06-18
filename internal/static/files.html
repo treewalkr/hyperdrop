@@ -1334,9 +1334,9 @@
             let data;
             try { data = JSON.parse(ev.data); } catch (e) { return; }
             if (data.type === 'file_uploaded') {
-              this.onRemoteUpload(data.file || {});
+              this.onRemoteUpload(data.file || {}, data.path);
             } else if (data.type === 'file_deleted') {
-              this.onRemoteDelete(data.name);
+              this.onRemoteDelete(data.name, data.path);
             }
           };
 
@@ -1351,10 +1351,12 @@
           setTimeout(() => this.connectWS(), delay);
         },
 
-        // A remote device uploaded a file. If it's new to the current view,
-        // splice it in and surface a cross-device toast.
-        onRemoteUpload(file) {
+        // A remote device uploaded a file. Only apply it to the open view when
+        // the event's directory matches currentPath; an event you receive is
+        // otherwise guaranteed to describe a folder you are not looking at.
+        onRemoteUpload(file, path) {
           if (!file || !file.name) return;
+          if (path !== this.currentPath) return;
           if (this.files.some((f) => f.name === file.name)) return;
           this.files.push({
             name: file.name,
@@ -1367,8 +1369,9 @@
           this.toast(file.name + ' received from another device', 'info');
         },
 
-        onRemoteDelete(name) {
+        onRemoteDelete(name, path) {
           if (!name) return;
+          if (path !== this.currentPath) return;
           this.files = this.files.filter((f) => f.name !== name);
           delete this.selected[name];
         },

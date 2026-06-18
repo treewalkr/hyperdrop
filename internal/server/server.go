@@ -88,6 +88,8 @@ func uploadHandler(cfg cli.Config, hub *Hub) http.HandlerFunc {
 			return
 		}
 
+		relDir := relFromRoot(cfg.RootDir, base)
+
 		var saved []uploadResult
 		for {
 			part, err := reader.NextPart()
@@ -127,6 +129,7 @@ func uploadHandler(cfg cli.Config, hub *Hub) http.HandlerFunc {
 			saved = append(saved, uploadResult{Name: filename, Size: n})
 			hub.broadcast(map[string]any{
 				"type": "file_uploaded",
+				"path": relDir,
 				"file": map[string]any{
 					"name":     filename,
 					"size":     n,
@@ -187,6 +190,39 @@ func resolveTargetDir(rootDir, sub string) (string, error) {
 		return rootDir, nil
 	}
 	return sandbox.SanitizePath(rootDir, sub)
+}
+
+// relFromRoot returns abs as a path relative to rootDir in URL-path form
+// (forward slashes), with root represented as "". The result matches the
+// ?path=<dir> value the list/upload handlers and the Files page use, so a
+// broadcast event's "path" can be compared directly against the open view.
+//
+// rootDir is resolved the same way sandbox.SanitizePath resolves it (Abs +
+// EvalSymlinks) so the comparison is consistent even when the root contains
+// symlinked segments — e.g. macOS temp dirs where /var/folders links to
+// /private/var/folders.
+func relFromRoot(rootDir, abs string) string {
+	absRoot, err := filepath.Abs(rootDir)
+	if err == nil {
+		if resolved, err := filepath.EvalSymlinks(absRoot); err == nil {
+			absRoot = resolved
+		}
+	}
+	// Resolve abs too so both sides are on the same (de-symlinked) footing —
+	// when ?path= is empty, base is the raw rootDir and may still carry a
+	// symlinked segment while absRoot does not.
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		abs = resolved
+	}
+	rel, err := filepath.Rel(absRoot, abs)
+	if err != nil {
+		return ""
+	}
+	rel = filepath.ToSlash(rel)
+	if rel == "." {
+		return ""
+	}
+	return rel
 }
 
 func categorize(name string) string {
@@ -287,6 +323,7 @@ func deleteHandler(cfg cli.Config, hub *Hub) http.HandlerFunc {
 
 		hub.broadcast(map[string]any{
 			"type": "file_deleted",
+			"path": relFromRoot(cfg.RootDir, filepath.Dir(dest)),
 			"name": filepath.Base(dest),
 		})
 

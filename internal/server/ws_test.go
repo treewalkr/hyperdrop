@@ -67,6 +67,11 @@ func TestWS_Authenticated_UpgradeSucceeds(t *testing.T) {
 
 // uploadOne POSTs a single multipart file to /api/upload.
 func uploadOne(t *testing.T, ts *httptest.Server, token, filename, content string) {
+	uploadOneTo(t, ts, token, "", filename, content)
+}
+
+// uploadOneTo POSTs into the given ?path=<dir> subdirectory ("" = root).
+func uploadOneTo(t *testing.T, ts *httptest.Server, token, dir, filename, content string) {
 	t.Helper()
 	body := &bytes.Buffer{}
 	w := multipart.NewWriter(body)
@@ -76,7 +81,11 @@ func uploadOne(t *testing.T, ts *httptest.Server, token, filename, content strin
 	}
 	part.Write([]byte(content))
 	w.Close()
-	req, _ := http.NewRequest("POST", ts.URL+"/api/upload?token="+token, body)
+	target := ts.URL + "/api/upload?token=" + token
+	if dir != "" {
+		target += "&path=" + dir
+	}
+	req, _ := http.NewRequest("POST", target, body)
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	resp, err := ts.Client().Do(req)
 	if err != nil {
@@ -227,5 +236,73 @@ func TestWS_MultipleClients_AllReceive(t *testing.T) {
 		if ev["type"] != "file_uploaded" {
 			t.Errorf("client missed event: got %v", ev["type"])
 		}
+	}
+}
+
+// TestWS_Upload_PathScoped pins the "path" field carried on file_uploaded so
+// the client can tell which directory the event describes. Root is "".
+func TestWS_Upload_PathScoped(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, "photos", "2024"), 0755)
+	r := NewRouter(cli.Config{RootDir: root, Token: testToken})
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	c, err := dialWS(t, ts, testToken)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer c.Close(websocket.StatusNormalClosure, "")
+
+	// Into a nested directory; the event must name that directory.
+	uploadOneTo(t, ts, testToken, "photos/2024", "pic.jpg", "x")
+
+	ev := readEvent(t, c)
+	if ev["type"] != "file_uploaded" {
+		t.Fatalf("type: got %v, want file_uploaded", ev["type"])
+	}
+	if got, want := ev["path"], "photos/2024"; got != want {
+		t.Errorf("path: got %v, want %q", got, want)
+	}
+
+	// Into root; path must be "" so a root view matches.
+	uploadOneTo(t, ts, testToken, "", "doc.pdf", "x")
+	ev = readEvent(t, c)
+	if got, want := ev["path"], ""; got != want {
+		t.Errorf("root path: got %v, want %q", got, want)
+	}
+}
+
+// TestWS_Delete_PathScoped pins the "path" field on file_deleted: it must be
+// the deleted file's parent directory, not filepath.Base(dest).
+func TestWS_Delete_PathScoped(t *testing.T) {
+	root := t.TempDir()
+	sub := filepath.Join(root, "photos", "2024")
+	os.MkdirAll(sub, 0755)
+	os.WriteFile(filepath.Join(sub, "gone.jpg"), []byte("x"), 0644)
+	// A same-named file at root, to confirm the client guard keys on path, not name.
+	os.WriteFile(filepath.Join(root, "gone.jpg"), []byte("y"), 0644)
+
+	r := NewRouter(cli.Config{RootDir: root, Token: testToken})
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	c, err := dialWS(t, ts, testToken)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer c.Close(websocket.StatusNormalClosure, "")
+
+	deleteOne(t, ts, testToken, "photos/2024/gone.jpg")
+
+	ev := readEvent(t, c)
+	if ev["type"] != "file_deleted" {
+		t.Fatalf("type: got %v, want file_deleted", ev["type"])
+	}
+	if got, want := ev["name"], "gone.jpg"; got != want {
+		t.Errorf("name: got %v, want %q", got, want)
+	}
+	if got, want := ev["path"], "photos/2024"; got != want {
+		t.Errorf("path: got %v, want %q (parent dir, not bare name)", got, want)
 	}
 }
