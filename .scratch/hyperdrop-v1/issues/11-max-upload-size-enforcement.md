@@ -1,6 +1,12 @@
-Status: ready-for-code-review
+Status: done
 
 ## Status notes
+
+Merged to main via PR #11 (squash `9828215`). Passed `/pr-review`
+(`.codereviews/11-max-upload-size/REVIEW.md`): verdict **Approve with nits**, no
+blocking findings. Only residual is a low-severity edge case
+(`HumanizeSize` panics at ≥1<<60 byte limits, unreachable in normal use) tracked
+as a non-blocking nit.
 
 Implemented in PR #11 (feat/max-upload-size). All acceptance criteria met:
 `--max-size` now parses human-readable strings (`500MB`→524288000 bytes, `2GB`,
