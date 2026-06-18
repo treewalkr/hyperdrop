@@ -13,12 +13,13 @@ import (
 
 // Config holds parsed CLI flags.
 type Config struct {
-	RootDir string // positional arg, default "."
-	Host    string // --host, default "0.0.0.0"
-	Port    int    // --port, default 8080
-	Token   string // --token, default "" (auto-generate)
-	MaxSize int64  // --max-size, default 0 (unlimited, in bytes)
-	Dev     bool   // --dev, default false
+	RootDir     string // positional arg, default "."
+	Host        string // --host, default "0.0.0.0"
+	Port        int    // --port, default 8080
+	Token       string // --token, default "" (auto-generate)
+	MaxSize     int64  // --max-size, default 0 (unlimited, in bytes)
+	Dev         bool   // --dev, default false
+	ShowVersion bool   // --version, print version and exit
 }
 
 // ParseArgs parses CLI arguments into a Config.
@@ -32,9 +33,16 @@ func ParseArgs(args []string) (Config, error) {
 	maxSize := new(sizeValue)
 	fs.Var(maxSize, "max-size", "max upload size (e.g. 500MB, 2GB, 100KB; 0 = unlimited)")
 	dev := fs.Bool("dev", false, "serve static assets from disk")
+	showVersion := fs.Bool("version", false, "print version and exit")
 
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
+	}
+
+	// --version short-circuits before any directory validation so it works
+	// regardless of the current working directory.
+	if *showVersion {
+		return Config{ShowVersion: true}, nil
 	}
 
 	rootDir := "."
@@ -51,12 +59,13 @@ func ParseArgs(args []string) (Config, error) {
 	}
 
 	return Config{
-		RootDir: rootDir,
-		Host:    *host,
-		Port:    *port,
-		Token:   *token,
-		MaxSize: int64(*maxSize),
-		Dev:     *dev,
+		RootDir:     rootDir,
+		Host:        *host,
+		Port:        *port,
+		Token:       *token,
+		MaxSize:     int64(*maxSize),
+		Dev:         *dev,
+		ShowVersion: false,
 	}, nil
 }
 

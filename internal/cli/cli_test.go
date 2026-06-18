@@ -6,6 +6,22 @@ import (
 	"testing"
 )
 
+func TestParseArgs_Version(t *testing.T) {
+	cfg, err := ParseArgs([]string{"--version"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !cfg.ShowVersion {
+		t.Fatal("ShowVersion: got false, want true")
+	}
+
+	// --version must not require a valid root directory: other fields are left
+	// zero so the caller short-circuits to printing version info.
+	if cfg.RootDir != "" {
+		t.Errorf("RootDir: got %q, want empty (version short-circuits validation)", cfg.RootDir)
+	}
+}
+
 func TestParseArgs_Defaults(t *testing.T) {
 	cfg, err := ParseArgs([]string{})
 	if err != nil {

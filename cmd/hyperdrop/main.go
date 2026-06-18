@@ -6,6 +6,7 @@ import (
 
 	"github.com/treewalkr/hyperdrop/internal/cli"
 	"github.com/treewalkr/hyperdrop/internal/server"
+	"github.com/treewalkr/hyperdrop/internal/version"
 )
 
 func main() {
@@ -13,6 +14,11 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
+	}
+
+	if cfg.ShowVersion {
+		fmt.Println(version.String())
+		return
 	}
 
 	if cfg.Token == "" {
