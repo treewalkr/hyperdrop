@@ -3,6 +3,9 @@ set shell := ["sh", "-cu"]
 app := "hyperdrop"
 cmd := "./cmd/hyperdrop"
 packages := "./..."
+version_pkg := "github.com/treewalkr/hyperdrop/internal/version"
+git_commit := `git rev-parse --short HEAD 2>/dev/null || echo none`
+ldflags := "-s -w -X {{version_pkg}}.Version=dev -X {{version_pkg}}.Commit={{git_commit}} -X {{version_pkg}}.Date=unknown"
 
 fmt:
 	gofmt -w ./cmd ./internal
@@ -21,7 +24,7 @@ test-race:
 
 build:
 	mkdir -p ./bin
-	go build -o ./bin/{{app}} {{cmd}}
+	go build -ldflags "{{ldflags}}" -o ./bin/{{app}} {{cmd}}
 
 run *args:
 	go run {{cmd}} {{args}}

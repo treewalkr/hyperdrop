@@ -1,0 +1,73 @@
+# goreleaser config for hyperdrop.
+# Docs: https://goreleaser.com
+# Local smoke test (no upload, no tag required): goreleaser build --snapshot --clean
+# Full release: push a `v*` tag; the .github/workflows/release.yml job runs `goreleaser release`.
+
+version: 2
+
+project_name: hyperdrop
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: hyperdrop
+    main: ./cmd/hyperdrop
+    binary: hyperdrop
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      # Windows arm64 is not a release target (see issue #12).
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X github.com/treewalkr/hyperdrop/internal/version.Version={{.Version}}
+      - -X github.com/treewalkr/hyperdrop/internal/version.Commit={{.Commit}}
+      - -X github.com/treewalkr/hyperdrop/internal/version.Date={{.Date}}
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_
+      {{- if eq .Os "darwin" }}macos
+      {{- else }}{{ .Os }}{{ end }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-dev"
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^chore:"
+      - "^test:"
+
+release:
+  github:
+    owner: treewalkr
+    name: hyperdrop
+  draft: false
+  prerelease: auto
+  name_template: "{{ .Tag }}"
