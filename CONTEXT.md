@@ -29,7 +29,7 @@
 ## Security
 
 - **path sandboxing**: All file operations are validated to ensure the resolved path stays within the root directory. Paths containing `..` traversal or absolute paths that escape the root are rejected.
-- **max upload size**: An optional `--max-size` flag that rejects uploads exceeding the specified byte limit. Default is unlimited.
+- **max upload size**: An optional `--max-size` flag that rejects uploads exceeding the specified limit. Accepts human-readable values (`500MB`, `2GB`, `1.5GB`, `100KB`) or a bare byte count; parsed into bytes at startup. Default is unlimited.
 
 ## Architecture
 

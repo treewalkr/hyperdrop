@@ -304,8 +304,68 @@ func TestUpload_MaxSizeExceeded_Returns413(t *testing.T) {
 
 	var result map[string]string
 	json.NewDecoder(resp.Body).Decode(&result)
-	if result["error"] != "file too large: max 1024 bytes" {
-		t.Errorf("error: got %q", result["error"])
+	if result["error"] != "file too large: max 1.0 KB" {
+		t.Errorf("error: got %q, want %q", result["error"], "file too large: max 1.0 KB")
+	}
+}
+
+func TestUpload_MaxSize_AllowsWithinLimit(t *testing.T) {
+	root := t.TempDir()
+	cfg := cli.Config{RootDir: root, Token: "secret123", MaxSize: 1024}
+	r := NewRouter(cfg)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("file", "small.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	part.Write([]byte("ok")) // well under the 1KB cap
+	writer.Close()
+
+	req, _ := http.NewRequest("POST", ts.URL+"/api/upload?token=secret123", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status: got %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestUpload_MaxSize_DefaultUnlimited(t *testing.T) {
+	root := t.TempDir()
+	cfg := cli.Config{RootDir: root, Token: "secret123"} // MaxSize=0 → unlimited
+	r := NewRouter(cfg)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("file", "big.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	part.Write(make([]byte, 10000)) // would exceed any reasonable cap
+	writer.Close()
+
+	req, _ := http.NewRequest("POST", ts.URL+"/api/upload?token=secret123", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status: got %d, want 200 (default unlimited)", resp.StatusCode)
 	}
 }
 

@@ -68,7 +68,7 @@ func uploadHandler(cfg cli.Config, hub *Hub) http.HandlerFunc {
 		if cfg.MaxSize > 0 {
 			if r.ContentLength > cfg.MaxSize {
 				writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{
-					"error": fmt.Sprintf("file too large: max %d bytes", cfg.MaxSize),
+					"error": fmt.Sprintf("file too large: max %s", cli.HumanizeSize(cfg.MaxSize)),
 				})
 				return
 			}
