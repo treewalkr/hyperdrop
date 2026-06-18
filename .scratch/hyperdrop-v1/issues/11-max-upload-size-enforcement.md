@@ -1,4 +1,15 @@
-Status: ready-for-agent
+Status: ready-for-code-review
+
+## Status notes
+
+Implemented in PR #11 (feat/max-upload-size). All acceptance criteria met:
+`--max-size` now parses human-readable strings (`500MB`→524288000 bytes, `2GB`,
+`100KB`, `1.5GB`) via a custom `flag.Value` (`internal/cli`); bare numbers stay
+bytes; invalid strings exit code 1. Upload enforcement (Content-Length→413,
+`http.MaxBytesReader` for chunked) was already in place from #04; the 413 message
+is now human-readable (`file too large: max 500.0 MB`). Covered by
+`TestParseArgs_MaxSize_HumanReadable`, `TestParseArgs_MaxSize_Invalid`,
+`TestHumanizeSize`, and the existing `TestUpload_MaxSizeExceeded/Chunked` suite.
 
 ## Parent
 
