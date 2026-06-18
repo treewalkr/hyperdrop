@@ -23,6 +23,13 @@ import (
 
 // NewRouter builds a Chi mux with static file routes for the given config.
 func NewRouter(cfg cli.Config) chi.Router {
+	r, _ := newRouterWithHub(cfg)
+	return r
+}
+
+// newRouterWithHub builds the router and returns the event Hub alongside it, so
+// tests can inspect subscriber lifecycle (connect/disconnect cleanup).
+func newRouterWithHub(cfg cli.Config) (chi.Router, *Hub) {
 	r := chi.NewRouter()
 
 	var assets fs.FS
@@ -32,6 +39,8 @@ func NewRouter(cfg cli.Config) chi.Router {
 		assets = static.Assets
 	}
 
+	hub := newHub()
+
 	// Static assets — no auth required
 	r.Get("/", serveFile(assets, "index.html"))
 	r.Get("/files", serveFile(assets, "files.html"))
@@ -39,13 +48,14 @@ func NewRouter(cfg cli.Config) chi.Router {
 	// API routes — token auth required
 	r.Route("/api", func(r chi.Router) {
 		r.Use(tokenAuth(cfg.Token))
-		r.Post("/upload", uploadHandler(cfg))
+		r.Get("/ws", wsHandler(hub))
+		r.Post("/upload", uploadHandler(cfg, hub))
 		r.Get("/files", listHandler(cfg))
 		r.Get("/files/*", downloadHandler(cfg))
-		r.Delete("/files/*", deleteHandler(cfg))
+		r.Delete("/files/*", deleteHandler(cfg, hub))
 	})
 
-	return r
+	return r, hub
 }
 
 type uploadResult struct {
@@ -53,7 +63,7 @@ type uploadResult struct {
 	Size int64  `json:"size"`
 }
 
-func uploadHandler(cfg cli.Config) http.HandlerFunc {
+func uploadHandler(cfg cli.Config, hub *Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if cfg.MaxSize > 0 {
 			if r.ContentLength > cfg.MaxSize {
@@ -77,6 +87,8 @@ func uploadHandler(cfg cli.Config) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "expected multipart/form-data"})
 			return
 		}
+
+		relDir := relFromRoot(cfg.RootDir, base)
 
 		var saved []uploadResult
 		for {
@@ -115,6 +127,15 @@ func uploadHandler(cfg cli.Config) http.HandlerFunc {
 			}
 
 			saved = append(saved, uploadResult{Name: filename, Size: n})
+			hub.broadcast(map[string]any{
+				"type": "file_uploaded",
+				"path": relDir,
+				"file": map[string]any{
+					"name":     filename,
+					"size":     n,
+					"category": categorize(filename),
+				},
+			})
 		}
 
 		writeJSON(w, http.StatusOK, map[string]interface{}{"files": saved})
@@ -169,6 +190,39 @@ func resolveTargetDir(rootDir, sub string) (string, error) {
 		return rootDir, nil
 	}
 	return sandbox.SanitizePath(rootDir, sub)
+}
+
+// relFromRoot returns abs as a path relative to rootDir in URL-path form
+// (forward slashes), with root represented as "". The result matches the
+// ?path=<dir> value the list/upload handlers and the Files page use, so a
+// broadcast event's "path" can be compared directly against the open view.
+//
+// rootDir is resolved the same way sandbox.SanitizePath resolves it (Abs +
+// EvalSymlinks) so the comparison is consistent even when the root contains
+// symlinked segments — e.g. macOS temp dirs where /var/folders links to
+// /private/var/folders.
+func relFromRoot(rootDir, abs string) string {
+	absRoot, err := filepath.Abs(rootDir)
+	if err == nil {
+		if resolved, err := filepath.EvalSymlinks(absRoot); err == nil {
+			absRoot = resolved
+		}
+	}
+	// Resolve abs too so both sides are on the same (de-symlinked) footing —
+	// when ?path= is empty, base is the raw rootDir and may still carry a
+	// symlinked segment while absRoot does not.
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		abs = resolved
+	}
+	rel, err := filepath.Rel(absRoot, abs)
+	if err != nil {
+		return ""
+	}
+	rel = filepath.ToSlash(rel)
+	if rel == "." {
+		return ""
+	}
+	return rel
 }
 
 func categorize(name string) string {
@@ -241,7 +295,7 @@ func downloadHandler(cfg cli.Config) http.HandlerFunc {
 	}
 }
 
-func deleteHandler(cfg cli.Config) http.HandlerFunc {
+func deleteHandler(cfg cli.Config, hub *Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		requested := chi.URLParam(r, "*")
 		requested = strings.TrimPrefix(requested, "/")
@@ -266,6 +320,12 @@ func deleteHandler(cfg cli.Config) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "permission denied"})
 			return
 		}
+
+		hub.broadcast(map[string]any{
+			"type": "file_deleted",
+			"path": relFromRoot(cfg.RootDir, filepath.Dir(dest)),
+			"name": filepath.Base(dest),
+		})
 
 		writeJSON(w, http.StatusOK, map[string]string{"deleted": filepath.Base(dest)})
 	}

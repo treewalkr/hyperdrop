@@ -1289,6 +1289,8 @@
         selected: {},          // name -> true
         toasts: [],
         nextToastId: 0,
+        ws: null,              // live WebSocket connection (issue 10)
+        wsReconnectDelay: 1000, // exp-backoff base for WS reconnect
         confirmOpen: false,
         confirmTitle: '',
         confirmBody: '',
@@ -1311,6 +1313,67 @@
           document.addEventListener('keydown', onKey);
 
           this.load();
+          this.connectWS();
+        },
+
+        // Open the real-time event stream. Reconnects with exponential backoff
+        // when the socket drops, so all browsers stay in sync without a refresh.
+        connectWS() {
+          const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const url = proto + '//' + location.host + '/api/ws' + this.qs;
+          let ws;
+          try {
+            ws = new WebSocket(url);
+          } catch (e) {
+            this.scheduleReconnect();
+            return;
+          }
+          this.ws = ws;
+
+          ws.onmessage = (ev) => {
+            let data;
+            try { data = JSON.parse(ev.data); } catch (e) { return; }
+            if (data.type === 'file_uploaded') {
+              this.onRemoteUpload(data.file || {}, data.path);
+            } else if (data.type === 'file_deleted') {
+              this.onRemoteDelete(data.name, data.path);
+            }
+          };
+
+          ws.onclose = () => { this.ws = null; this.scheduleReconnect(); };
+          ws.onerror = () => { try { ws.close(); } catch (e) {} };
+        },
+
+        // Backoff capped at ~16s; reset whenever a fresh connection is opened.
+        scheduleReconnect() {
+          const delay = this.wsReconnectDelay;
+          this.wsReconnectDelay = Math.min(delay * 2, 16000);
+          setTimeout(() => this.connectWS(), delay);
+        },
+
+        // A remote device uploaded a file. Only apply it to the open view when
+        // the event's directory matches currentPath; an event you receive is
+        // otherwise guaranteed to describe a folder you are not looking at.
+        onRemoteUpload(file, path) {
+          if (!file || !file.name) return;
+          if (path !== this.currentPath) return;
+          if (this.files.some((f) => f.name === file.name)) return;
+          this.files.push({
+            name: file.name,
+            size: file.size || 0,
+            date: new Date(),
+            is_dir: false,
+            category: file.category || 'file',
+            ext: this.extOf(file.name),
+          });
+          this.toast(file.name + ' received from another device', 'info');
+        },
+
+        onRemoteDelete(name, path) {
+          if (!name) return;
+          if (path !== this.currentPath) return;
+          this.files = this.files.filter((f) => f.name !== name);
+          delete this.selected[name];
         },
 
         // Query string carrying token + path + variant, so every API call and
