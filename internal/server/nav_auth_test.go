@@ -150,3 +150,34 @@ func TestNavLinks_WrongTokenDoesNotInject(t *testing.T) {
 		t.Errorf("wrong token must not be injected into nav hrefs; body contained ?token=")
 	}
 }
+
+// TestNavLinks_BrandLinkStaysTokenless pins the invariant that the brand
+// anchor (href="/" class="brand"), which lives outside the in-page nav, never
+// receives the token — even though it shares its href value with the Send nav
+// link. This guards against a regression to a catch-all-rewrite that depended
+// on the brand link's exact attribute serialization to skip it; here injection
+// is scoped to the nav block, so the brand anchor is structurally excluded.
+func TestNavLinks_BrandLinkStaysTokenless(t *testing.T) {
+	const token = "secret123"
+	r := NewRouter(cli.Config{Token: token})
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	for _, page := range []string{"/", "/files"} {
+		resp, err := http.Get(ts.URL + page + "?token=" + token)
+		if err != nil {
+			t.Fatalf("GET %s: unexpected error: %v", page, err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		// The brand anchor must remain exactly token-less.
+		if strings.Contains(string(body), `class="brand"`+token) ||
+			strings.Contains(string(body), `href="/?token=`+token+`" class="brand"`) {
+			t.Errorf("GET %s: brand anchor must stay token-less", page)
+		}
+		if !strings.Contains(string(body), `href="/" class="brand"`) {
+			t.Errorf("GET %s: brand anchor href must remain plain href=\"/\" class=\"brand\"", page)
+		}
+	}
+}

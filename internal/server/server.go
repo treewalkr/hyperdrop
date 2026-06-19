@@ -390,6 +390,10 @@ func serveFile(fsys fs.FS, name string) http.HandlerFunc {
 //     401s because the cookie is set by the page request itself.
 //  2. Injects the token onto the same-origin Send<->Files nav hrefs, so the
 //     next in-app navigation also carries ?token= and (re)sets the cookie.
+//     This is not redundant with the cookie once the cookie exists: the
+//     session cookie has no MaxAge/Expires, so it is cleared when the browser
+//     closes. After a restart, in-app nav via plain hrefs would have neither
+//     token nor cookie; the token-bearing href re-seeds the cookie.
 //
 // The token is only ever echoed into a response when the request already
 // proved knowledge of it. Unauthenticated requests (no token, no cookie)
@@ -437,32 +441,49 @@ func servePageWithToken(fsys fs.FS, name, validToken string) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		// The injected body is token-specific, so it must never be cached
+		// (an ETag/Last-Modified here would let a token-bearing body be
+		// reused across users). no-store makes that intent explicit; the
+		// unauthenticated branch above keeps cache-friendly ServeContent.
+		w.Header().Set("Cache-Control", "no-store")
 		w.Write(injectNavToken(body, validToken))
 	}
 }
 
-// injectNavToken rewrites the same-origin Send<->Files nav hrefs in a page to
-// carry ?token=<token>. It targets only:
+// injectNavToken rewrites the same-origin Send<->Files nav hrefs to carry
+// ?token=<token>, scoped to the in-page <nav class="header-nav"> block:
 //
-//   - href="/files"      -> href="/files?token=<token>"  (the Files nav link)
-//   - href="/"           -> href="/?token=<token>"        (the Send nav link),
-//     but NOT the brand link href="/" class="brand", which stays token-less.
+//   - href="/files" -> href="/files?token=<token>"  (the Files nav link)
+//   - href="/"      -> href="/?token=<token>"        (the Send nav link)
 //
-// It performs no replacement on absolute/external URLs, query-bearing hrefs,
-// or the favicon data-URI, so a token can never land on a link that could
-// leave the origin.
+// Scoping to the nav element — rather than rewriting every href="/" in the
+// page and then trying to un-catch the brand anchor by matching its exact
+// attribute serialization — means the brand link (href="/" class="brand", a
+// sibling OUTSIDE the nav) and any external/data-URI link can never receive
+// the token, regardless of how the markup's attributes are ordered. Each
+// target href appears exactly once inside the nav.
+//
+// If the page structure changes such that the nav block can't be located,
+// it fails safe: the page is served verbatim (no token injected, so no leak).
+// Auth then degrades to the session cookie or the original token URL.
 func injectNavToken(body []byte, token string) []byte {
+	const navOpen = `<nav class="header-nav">`
 	s := string(body)
+	start := strings.Index(s, navOpen)
+	if start < 0 {
+		return body
+	}
+	end := strings.Index(s[start:], "</nav>")
+	if end < 0 {
+		return body
+	}
+	end += start + len("</nav>")
+
 	encoded := url.QueryEscape(token)
-	// Files nav link — appears once per page.
-	s = strings.Replace(s, `href="/files"`, `href="/files?token=`+encoded+`"`, 1)
-	// Send nav link. Skip the brand anchor, which is exactly
-	// `href="/" class="brand"`. Every other href="/" in the pages is a
-	// same-origin Send nav link.
-	const brand = `href="/" class="brand"`
-	s = strings.ReplaceAll(s, `href="/"`, `href="/?token=`+encoded+`"`)
-	s = strings.Replace(s, `href="/?token=`+encoded+`" class="brand"`, brand, 1)
-	return []byte(s)
+	block := s[start:end]
+	block = strings.Replace(block, `href="/files"`, `href="/files?token=`+encoded+`"`, 1)
+	block = strings.Replace(block, `href="/"`, `href="/?token=`+encoded+`"`, 1)
+	return []byte(s[:start] + block + s[end:])
 }
 
 // NetworkURL returns the full URL a user should open in their browser,
