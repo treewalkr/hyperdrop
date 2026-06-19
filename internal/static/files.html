@@ -450,8 +450,13 @@
        VARIANT A — TABLE (GLASS)
        ======================================== */
     .variant-a {
-      min-height: calc(100vh - var(--header-h));
-      overflow-x: auto;
+      /* Bounded height + overflow:auto makes this the scroll container for the
+         table. That keeps the thead sticky relative to THIS box (pinned to its
+         top via thead th { top: 0 }), so the header sits just below the
+         breadcrumb and the first row is never painted under it (issue #18).
+         overflow:auto also preserves horizontal scroll for wide tables. */
+      height: calc(100vh - var(--sticky-stack-h));
+      overflow: auto;
       position: relative;
       z-index: 1;
     }
@@ -463,7 +468,11 @@
       text-align: left;
       border-bottom: 1px solid var(--border);
       position: sticky;
-      top: var(--header-h);
+      /* Pin to the top of the .variant-a scroll container (which sits just
+         below the breadcrumb bar), not the viewport. With the old
+         top: var(--header-h) the thead rode up over the first data row on
+         scroll (issue #18). */
+      top: 0;
       background: rgba(8,11,26,0.85);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
