@@ -71,6 +71,42 @@ func TestParseArgs_FlagOverrides(t *testing.T) {
 	}
 }
 
+func TestParseArgs_FlagsAfterPositional(t *testing.T) {
+	// Flags placed after the positional directory must still be honored.
+	// `hyperdrop ./tmp --port 8090 --token foo`
+	cfg, err := ParseArgs([]string{"/tmp", "--port", "8090", "--token", "foo"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.RootDir != "/tmp" {
+		t.Errorf("RootDir: got %q, want %q", cfg.RootDir, "/tmp")
+	}
+	if cfg.Port != 8090 {
+		t.Errorf("Port: got %d, want %d", cfg.Port, 8090)
+	}
+	if cfg.Token != "foo" {
+		t.Errorf("Token: got %q, want %q", cfg.Token, "foo")
+	}
+}
+
+func TestParseArgs_UnknownFlagAfterPositional(t *testing.T) {
+	// An unknown flag after the positional must be rejected, not silently
+	// swallowed. `hyperdrop ./tmp --bogus`
+	_, err := ParseArgs([]string{"/tmp", "--bogus"})
+	if err == nil {
+		t.Fatal("expected error for unknown flag after positional, got nil")
+	}
+}
+
+func TestParseArgs_UnknownFlagBeforePositional(t *testing.T) {
+	// An unknown flag before the positional must be rejected.
+	// `hyperdrop --bogus ./tmp`
+	_, err := ParseArgs([]string{"--bogus", "/tmp"})
+	if err == nil {
+		t.Fatal("expected error for unknown flag before positional, got nil")
+	}
+}
+
 func TestGenerateToken(t *testing.T) {
 	tok, err := GenerateToken()
 	if err != nil {
