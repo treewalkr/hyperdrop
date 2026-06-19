@@ -41,9 +41,17 @@ func newRouterWithHub(cfg cli.Config) (chi.Router, *Hub) {
 
 	hub := newHub()
 
-	// Static assets — no auth required
-	r.Get("/", serveFile(assets, "index.html"))
-	r.Get("/files", serveFile(assets, "files.html"))
+	// Static pages — no auth required. They are served through
+	// servePageWithToken so that a request carrying a valid ?token= (the
+	// form produced by clicking the token-bearing Send<->Files nav links)
+	// sets the session cookie AND injects the token onto those same-origin
+	// nav hrefs. This avoids the cold-load 401 described in issue #17: the
+	// first page request after authentication carries ?token=, sets the
+	// cookie, and from then on the cookie — not the URL — is the credential.
+	// Unauthenticated page requests (no token, no cookie) serve the page
+	// with plain token-less hrefs and never receive the token.
+	r.Get("/", servePageWithToken(assets, "index.html", cfg.Token))
+	r.Get("/files", servePageWithToken(assets, "files.html", cfg.Token))
 
 	// API routes — token auth required
 	r.Route("/api", func(r chi.Router) {
@@ -370,6 +378,122 @@ func serveFile(fsys fs.FS, name string) http.HandlerFunc {
 		}
 		http.ServeContent(w, r, name, stat.ModTime(), rs)
 	}
+}
+
+// servePageWithToken serves an embedded HTML page. When the request carries a
+// valid ?token= query param, it does two things before serving:
+//
+//  1. Sets the hyperdrop_session cookie (same attributes as tokenAuth), so the
+//     browser authenticates subsequent same-origin requests — including the
+//     file-list API call the page fires on load — via the cookie rather than
+//     the URL. This is the fix for issue #17: a cold first visit no longer
+//     401s because the cookie is set by the page request itself.
+//  2. Injects the token onto the same-origin Send<->Files nav hrefs, so the
+//     next in-app navigation also carries ?token= and (re)sets the cookie.
+//     This is not redundant with the cookie once the cookie exists: the
+//     session cookie has no MaxAge/Expires, so it is cleared when the browser
+//     closes. After a restart, in-app nav via plain hrefs would have neither
+//     token nor cookie; the token-bearing href re-seeds the cookie.
+//
+// The token is only ever echoed into a response when the request already
+// proved knowledge of it. Unauthenticated requests (no token, no cookie)
+// receive the page verbatim, with token-less hrefs and no token in the body.
+//
+// A Referrer-Policy: same-origin header is set on every response so the
+// token-bearing URL is never sent as a Referer to a cross-origin endpoint
+// (the pages load Alpine from cdn.jsdelivr.net). Browsers default to
+// strict-origin-when-cross-origin, which already strips the query string for
+// cross-origin requests, but setting it explicitly makes the no-leak
+// guarantee hold by construction rather than relying on the browser default.
+func servePageWithToken(fsys fs.FS, name, validToken string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Set before any potential write so it applies to every response path.
+		w.Header().Set("Referrer-Policy", "same-origin")
+
+		f, err := fsys.Open(name)
+		if err != nil {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		defer f.Close()
+
+		stat, err := f.Stat()
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+
+		// No token to carry: serve verbatim with cache-friendly semantics.
+		queryToken := r.URL.Query().Get("token")
+		if validToken == "" || queryToken != validToken {
+			rs, ok := f.(io.ReadSeeker)
+			if !ok {
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			http.ServeContent(w, r, name, stat.ModTime(), rs)
+			return
+		}
+
+		// Valid token: set the cookie (cookie is the persistent credential),
+		// then inject the token into the same-origin nav hrefs.
+		http.SetCookie(w, &http.Cookie{
+			Name:     sessionCookieName,
+			Value:    validToken,
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			Path:     "/",
+		})
+
+		body, err := io.ReadAll(f)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		// The injected body is token-specific, so it must never be cached
+		// (an ETag/Last-Modified here would let a token-bearing body be
+		// reused across users). no-store makes that intent explicit; the
+		// unauthenticated branch above keeps cache-friendly ServeContent.
+		w.Header().Set("Cache-Control", "no-store")
+		w.Write(injectNavToken(body, validToken))
+	}
+}
+
+// injectNavToken rewrites the same-origin Send<->Files nav hrefs to carry
+// ?token=<token>, scoped to the in-page <nav class="header-nav"> block:
+//
+//   - href="/files" -> href="/files?token=<token>"  (the Files nav link)
+//   - href="/"      -> href="/?token=<token>"        (the Send nav link)
+//
+// Scoping to the nav element — rather than rewriting every href="/" in the
+// page and then trying to un-catch the brand anchor by matching its exact
+// attribute serialization — means the brand link (href="/" class="brand", a
+// sibling OUTSIDE the nav) and any external/data-URI link can never receive
+// the token, regardless of how the markup's attributes are ordered. Each
+// target href appears exactly once inside the nav.
+//
+// If the page structure changes such that the nav block can't be located,
+// it fails safe: the page is served verbatim (no token injected, so no leak).
+// Auth then degrades to the session cookie or the original token URL.
+func injectNavToken(body []byte, token string) []byte {
+	const navOpen = `<nav class="header-nav">`
+	s := string(body)
+	start := strings.Index(s, navOpen)
+	if start < 0 {
+		return body
+	}
+	end := strings.Index(s[start:], "</nav>")
+	if end < 0 {
+		return body
+	}
+	end += start + len("</nav>")
+
+	encoded := url.QueryEscape(token)
+	block := s[start:end]
+	block = strings.Replace(block, `href="/files"`, `href="/files?token=`+encoded+`"`, 1)
+	block = strings.Replace(block, `href="/"`, `href="/?token=`+encoded+`"`, 1)
+	return []byte(s[:start] + block + s[end:])
 }
 
 // NetworkURL returns the full URL a user should open in their browser,

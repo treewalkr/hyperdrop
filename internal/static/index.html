@@ -863,6 +863,24 @@
           const params = new URLSearchParams(location.search);
           this.token = params.get('token') || '';
           this.currentPath = (params.get('path') || '').replace(/^\/+|\/+$/g, '');
+          // The server sets the hyperdrop_session cookie on the token-bearing
+          // page request; from here on the cookie — not the URL — is the
+          // credential. Drop ?token from the address bar so it doesn't linger
+          // in browser history or leak via Referer. this.token stays in memory
+          // so API calls keep working until the cookie round-trips.
+          // NOTE: history.replaceState is not exercised by the Go HTTP tests;
+          // manually verified, regression coverage pending E2E (#20/#21).
+          this.stripTokenFromURL();
+        },
+
+        // Remove ?token from the address bar without disturbing other params.
+        stripTokenFromURL() {
+          try {
+            const u = new URL(location.href);
+            if (!u.searchParams.has('token')) return;
+            u.searchParams.delete('token');
+            history.replaceState(null, '', u.pathname + u.search + u.hash);
+          } catch (e) { /* non-secure context or no history API */ }
         },
 
         // Query string carrying token + path so uploads land in the right subdir.
