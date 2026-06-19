@@ -915,15 +915,17 @@
 
         // Server-reported bytes for an in-flight file. Authoritative over the
         // client-only xhr.upload.onprogress signal (which rarely fires on fast
-        // links). Progress is capped below 100%; the upload's own onload marks
-        // completion so the bar never stalls at 99% if a trailing event is
-        // dropped.
+        // links). The denominator is the file's known size (f.size), NOT the
+        // server's total: r.ContentLength is unavailable for chunked uploads
+        // and is the whole-request size for multi-file uploads, so the server's
+        // total is only a hint. Progress is capped below 100%; the upload's own
+        // onload marks completion so the bar never stalls at 99% if a trailing
+        // event is dropped.
         onUploadProgress(data) {
           const f = this.files.find((x) => x.name === data.name && x.status === 'uploading');
-          if (!f) return;
-          const total = data.total || 0;
-          if (total > 0 && data.bytesWritten > 0) {
-            f.progress = Math.min(99, Math.round((data.bytesWritten / total) * 100));
+          if (!f || !f.size) return;
+          if (data.bytesWritten > 0) {
+            f.progress = Math.min(99, Math.round((data.bytesWritten / f.size) * 100));
             const elapsed = (Date.now() - f.startedAt) / 1000;
             f.speed = elapsed > 0 ? (data.bytesWritten / 1048576 / elapsed).toFixed(1) : '0.0';
           }

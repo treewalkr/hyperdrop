@@ -114,6 +114,19 @@ drain:
 		t.Errorf("no upload_progress event with 0 < bytesWritten < total; got %+v", progress)
 	}
 
+	// Terminal flush: the final byte count is always emitted so a fast upload
+	// (whose body lands inside one throttle window) still climbs the bar to
+	// ~100% before file_uploaded. The flush carries the full file content size.
+	var maxWritten float64
+	for _, ev := range progress {
+		if bw, _ := ev["bytesWritten"].(float64); bw > maxWritten {
+			maxWritten = bw
+		}
+	}
+	if maxWritten != float64(contentSize) {
+		t.Errorf("terminal flush missing: max bytesWritten=%v, want %d (full file)", maxWritten, contentSize)
+	}
+
 	// (b) Terminal completion event.
 	if !sawUploaded {
 		t.Error("no terminal file_uploaded event emitted")

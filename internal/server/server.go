@@ -129,6 +129,19 @@ func copyProgressed(dst io.Writer, src io.Reader, hub *Hub, ev uploadProgressEve
 			}
 		}
 		if rerr == io.EOF {
+			// Terminal flush: a fast upload can complete entirely inside one
+			// throttle window, which would leave the bar pinned at the first
+			// chunk's fraction. Emit the final byte count so clients always see
+			// the bar climb toward 100% before the caller's file_uploaded marks
+			// completion. This is a single event, so the per-100ms ceiling still
+			// holds.
+			hub.broadcast(map[string]any{
+				"type":         "upload_progress",
+				"path":         ev.path,
+				"name":         ev.name,
+				"bytesWritten": written,
+				"total":        total,
+			})
 			return written, nil
 		}
 		if rerr != nil {
