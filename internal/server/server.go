@@ -398,8 +398,18 @@ func serveFile(fsys fs.FS, name string) http.HandlerFunc {
 // The token is only ever echoed into a response when the request already
 // proved knowledge of it. Unauthenticated requests (no token, no cookie)
 // receive the page verbatim, with token-less hrefs and no token in the body.
+//
+// A Referrer-Policy: same-origin header is set on every response so the
+// token-bearing URL is never sent as a Referer to a cross-origin endpoint
+// (the pages load Alpine from cdn.jsdelivr.net). Browsers default to
+// strict-origin-when-cross-origin, which already strips the query string for
+// cross-origin requests, but setting it explicitly makes the no-leak
+// guarantee hold by construction rather than relying on the browser default.
 func servePageWithToken(fsys fs.FS, name, validToken string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Set before any potential write so it applies to every response path.
+		w.Header().Set("Referrer-Policy", "same-origin")
+
 		f, err := fsys.Open(name)
 		if err != nil {
 			http.Error(w, "not found", http.StatusNotFound)

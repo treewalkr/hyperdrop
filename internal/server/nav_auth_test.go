@@ -171,13 +171,46 @@ func TestNavLinks_BrandLinkStaysTokenless(t *testing.T) {
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 
-		// The brand anchor must remain exactly token-less.
-		if strings.Contains(string(body), `class="brand"`+token) ||
-			strings.Contains(string(body), `href="/?token=`+token+`" class="brand"`) {
+		// The brand anchor (outside the nav block) must remain token-less.
+		// The nav-scoped Send link does carry the token, so only assert the
+		// brand anchor's own serialization stays plain.
+		if strings.Contains(string(body), `href="/?token=`+token+`" class="brand"`) {
 			t.Errorf("GET %s: brand anchor must stay token-less", page)
 		}
 		if !strings.Contains(string(body), `href="/" class="brand"`) {
 			t.Errorf("GET %s: brand anchor href must remain plain href=\"/\" class=\"brand\"", page)
+		}
+	}
+}
+
+// TestNavLinks_ReferrerPolicyHeader confirms the page response carries a
+// Referrer-Policy that prevents the token-bearing URL from being sent as a
+// Referer to cross-origin endpoints (the pages load Alpine from a CDN). This
+// makes the no-leak guarantee explicit rather than relying on the browser's
+// default strict-origin-when-cross-origin policy. Applies to every page
+// response, authenticated or not.
+func TestNavLinks_ReferrerPolicyHeader(t *testing.T) {
+	const token = "secret123"
+	r := NewRouter(cli.Config{Token: token})
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	for _, tc := range []struct {
+		name, page, query string
+	}{
+		{"authenticated root", "/", "?token=" + token},
+		{"authenticated files", "/files", "?token=" + token},
+		{"unauthenticated root", "/", ""},
+		{"unauthenticated files", "/files", ""},
+	} {
+		resp, err := http.Get(ts.URL + tc.page + tc.query)
+		if err != nil {
+			t.Fatalf("%s: unexpected error: %v", tc.name, err)
+		}
+		resp.Body.Close()
+
+		if got := resp.Header.Get("Referrer-Policy"); got != "same-origin" {
+			t.Errorf("%s: Referrer-Policy got %q, want %q", tc.name, got, "same-origin")
 		}
 	}
 }
