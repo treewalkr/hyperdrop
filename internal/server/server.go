@@ -41,9 +41,17 @@ func newRouterWithHub(cfg cli.Config) (chi.Router, *Hub) {
 
 	hub := newHub()
 
-	// Static assets — no auth required
-	r.Get("/", serveFile(assets, "index.html"))
-	r.Get("/files", serveFile(assets, "files.html"))
+	// Static pages — no auth required. They are served through
+	// servePageWithToken so that a request carrying a valid ?token= (the
+	// form produced by clicking the token-bearing Send<->Files nav links)
+	// sets the session cookie AND injects the token onto those same-origin
+	// nav hrefs. This avoids the cold-load 401 described in issue #17: the
+	// first page request after authentication carries ?token=, sets the
+	// cookie, and from then on the cookie — not the URL — is the credential.
+	// Unauthenticated page requests (no token, no cookie) serve the page
+	// with plain token-less hrefs and never receive the token.
+	r.Get("/", servePageWithToken(assets, "index.html", cfg.Token))
+	r.Get("/files", servePageWithToken(assets, "files.html", cfg.Token))
 
 	// API routes — token auth required
 	r.Route("/api", func(r chi.Router) {
@@ -370,6 +378,91 @@ func serveFile(fsys fs.FS, name string) http.HandlerFunc {
 		}
 		http.ServeContent(w, r, name, stat.ModTime(), rs)
 	}
+}
+
+// servePageWithToken serves an embedded HTML page. When the request carries a
+// valid ?token= query param, it does two things before serving:
+//
+//  1. Sets the hyperdrop_session cookie (same attributes as tokenAuth), so the
+//     browser authenticates subsequent same-origin requests — including the
+//     file-list API call the page fires on load — via the cookie rather than
+//     the URL. This is the fix for issue #17: a cold first visit no longer
+//     401s because the cookie is set by the page request itself.
+//  2. Injects the token onto the same-origin Send<->Files nav hrefs, so the
+//     next in-app navigation also carries ?token= and (re)sets the cookie.
+//
+// The token is only ever echoed into a response when the request already
+// proved knowledge of it. Unauthenticated requests (no token, no cookie)
+// receive the page verbatim, with token-less hrefs and no token in the body.
+func servePageWithToken(fsys fs.FS, name, validToken string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		f, err := fsys.Open(name)
+		if err != nil {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		defer f.Close()
+
+		stat, err := f.Stat()
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+
+		// No token to carry: serve verbatim with cache-friendly semantics.
+		queryToken := r.URL.Query().Get("token")
+		if validToken == "" || queryToken != validToken {
+			rs, ok := f.(io.ReadSeeker)
+			if !ok {
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			http.ServeContent(w, r, name, stat.ModTime(), rs)
+			return
+		}
+
+		// Valid token: set the cookie (cookie is the persistent credential),
+		// then inject the token into the same-origin nav hrefs.
+		http.SetCookie(w, &http.Cookie{
+			Name:     sessionCookieName,
+			Value:    validToken,
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			Path:     "/",
+		})
+
+		body, err := io.ReadAll(f)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(injectNavToken(body, validToken))
+	}
+}
+
+// injectNavToken rewrites the same-origin Send<->Files nav hrefs in a page to
+// carry ?token=<token>. It targets only:
+//
+//   - href="/files"      -> href="/files?token=<token>"  (the Files nav link)
+//   - href="/"           -> href="/?token=<token>"        (the Send nav link),
+//     but NOT the brand link href="/" class="brand", which stays token-less.
+//
+// It performs no replacement on absolute/external URLs, query-bearing hrefs,
+// or the favicon data-URI, so a token can never land on a link that could
+// leave the origin.
+func injectNavToken(body []byte, token string) []byte {
+	s := string(body)
+	encoded := url.QueryEscape(token)
+	// Files nav link — appears once per page.
+	s = strings.Replace(s, `href="/files"`, `href="/files?token=`+encoded+`"`, 1)
+	// Send nav link. Skip the brand anchor, which is exactly
+	// `href="/" class="brand"`. Every other href="/" in the pages is a
+	// same-origin Send nav link.
+	const brand = `href="/" class="brand"`
+	s = strings.ReplaceAll(s, `href="/"`, `href="/?token=`+encoded+`"`)
+	s = strings.Replace(s, `href="/?token=`+encoded+`" class="brand"`, brand, 1)
+	return []byte(s)
 }
 
 // NetworkURL returns the full URL a user should open in their browser,

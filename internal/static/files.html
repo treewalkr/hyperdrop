@@ -1304,6 +1304,15 @@
           this.token = params.get('token') || '';
           this.currentPath = (params.get('path') || '').replace(/^\/+|\/+$/g, '');
 
+          // The server sets the hyperdrop_session cookie on the token-bearing
+          // page request; from here on the cookie — not the URL — is the
+          // credential. Drop ?token from the address bar so it doesn't linger
+          // in browser history or leak via Referer. this.token stays in memory
+          // so API calls keep working until the cookie round-trips.
+          // NOTE: history.replaceState is not exercised by the Go HTTP tests;
+          // manually verified, regression coverage pending E2E (#20/#21).
+          this.stripTokenFromURL();
+
           const onKey = (e) => {
             const tag = document.activeElement && document.activeElement.tagName;
             if (tag === 'INPUT' || tag === 'TEXTAREA') return;
@@ -1430,8 +1439,28 @@
         },
 
         updateURL() {
-          const url = location.pathname + this.qs;
+          // Rebuild the address bar from current state, but omit the token:
+          // the cookie is the persistent credential, so the token must not
+          // re-enter the URL on folder/variant navigation (history/Referer).
+          const p = new URLSearchParams();
+          if (this.variant) p.set('variant', this.variant);
+          if (this.currentPath) p.set('path', this.currentPath);
+          const s = p.toString();
+          const url = location.pathname + (s ? ('?' + s) : '');
           try { history.replaceState(null, '', url); } catch (e) { /* non-secure ctx */ }
+        },
+
+        // Remove ?token from the address bar without disturbing other params
+        // (variant/path). Called once on init after the server has set the
+        // session cookie. this.token is retained in memory so qs keeps
+        // authenticating API calls until the cookie round-trips.
+        stripTokenFromURL() {
+          try {
+            const u = new URL(location.href);
+            if (!u.searchParams.has('token')) return;
+            u.searchParams.delete('token');
+            history.replaceState(null, '', u.pathname + u.search + u.hash);
+          } catch (e) { /* non-secure context or no history API */ }
         },
 
         // ---- data ----
