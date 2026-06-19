@@ -10,6 +10,10 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 | `ready-for-human`          | `ready-for-human`    | Requires human implementation            |
 | `wontfix`                  | `wontfix`            | Will not be actioned                     |
 
+These five labels exist as GitHub labels in `treewalkr/hyperdrop`. `gh` does not distinguish these from the built-in `wontfix`, so apply them with `gh issue edit <number> --add-label "..."`.
+
+Edit the right-hand column to match whatever vocabulary you actually use.
+
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
 
 Edit the right-hand column to match whatever vocabulary you actually use.

@@ -1,5 +1,6 @@
 .claude/
 .codereviews/
+.scratch/
 
 # macOS
 .DS_Store
@@ -8,6 +9,7 @@
 /bin/
 /dist/
 /hyperdrop
+/tmp
 *.test
 *.prof
 

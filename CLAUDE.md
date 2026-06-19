@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-Issues are tracked as local markdown files under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
+Issues and PRDs live as GitHub issues in `treewalkr/hyperdrop` (use the `gh` CLI). PRs are not a triage surface. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
