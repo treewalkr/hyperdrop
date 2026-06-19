@@ -902,6 +902,7 @@
             let data;
             try { data = JSON.parse(ev.data); } catch (e) { return; }
             if (data.type === 'upload_progress') this.onUploadProgress(data);
+            else if (data.type === 'file_uploaded') this.onUploadComplete(data);
           };
           ws.onclose = () => { this.ws = null; this.scheduleReconnect(); };
           ws.onerror = () => { try { ws.close(); } catch (e) {} };
@@ -918,17 +919,32 @@
         // links). The denominator is the file's known size (f.size), NOT the
         // server's total: r.ContentLength is unavailable for chunked uploads
         // and is the whole-request size for multi-file uploads, so the server's
-        // total is only a hint. Progress is capped below 100%; the upload's own
-        // onload marks completion so the bar never stalls at 99% if a trailing
-        // event is dropped.
+        // total is only a hint. Completion is driven by onUploadComplete
+        // (file_uploaded), so this only advances the bar mid-transfer.
         onUploadProgress(data) {
           const f = this.files.find((x) => x.name === data.name && x.status === 'uploading');
           if (!f || !f.size) return;
           if (data.bytesWritten > 0) {
-            f.progress = Math.min(99, Math.round((data.bytesWritten / f.size) * 100));
+            f.progress = Math.min(100, Math.round((data.bytesWritten / f.size) * 100));
             const elapsed = (Date.now() - f.startedAt) / 1000;
             f.speed = elapsed > 0 ? (data.bytesWritten / 1048576 / elapsed).toFixed(1) : '0.0';
           }
+        },
+
+        // Server-reported completion: the file_uploaded event fires the instant
+        // the server finishes writing the file, so this is the authoritative
+        // signal to finalize the card (progress 100%, done). xhr.onload stays
+        // as a fallback for when the socket isn't connected, and handles
+        // errors. The success toast fires here; onload skips it if the card is
+        // already done to avoid a double toast.
+        onUploadComplete(data) {
+          const file = data.file || {};
+          const f = this.files.find((x) => x.name === file.name && x.status === 'uploading');
+          if (!f) return;
+          f.progress = 100;
+          f.status = 'done';
+          f.speed = 0;
+          this.toast(f.name + ' uploaded', 'success');
         },
 
         // Remove ?token from the address bar without disturbing other params.
@@ -1037,10 +1053,15 @@
           xhr.onload = () => {
             entry.xhr = null;
             if (xhr.status >= 200 && xhr.status < 300) {
-              entry.progress = 100;
-              entry.status = 'done';
-              entry.speed = 0;
-              this.toast(entry.name + ' uploaded', 'success');
+              // file_uploaded over the WS is the authoritative completion and
+              // already finalized + toasted the card. Only act here if the WS
+              // never delivered it (e.g. socket down) — the fallback path.
+              if (entry.status !== 'done') {
+                entry.progress = 100;
+                entry.status = 'done';
+                entry.speed = 0;
+                this.toast(entry.name + ' uploaded', 'success');
+              }
             } else {
               entry.status = 'error';
               this.toast(entry.name + ' failed (' + xhr.status + ')', 'error');
