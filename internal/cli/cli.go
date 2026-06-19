@@ -35,8 +35,26 @@ func ParseArgs(args []string) (Config, error) {
 	dev := fs.Bool("dev", false, "serve static assets from disk")
 	showVersion := fs.Bool("version", false, "print version and exit")
 
-	if err := fs.Parse(args); err != nil {
-		return Config{}, err
+	// The stdlib flag parser stops at the first non-flag argument, which would
+	// silently drop any flags placed after the positional directory
+	// (`hyperdrop ./tmp --port 8090`). Repeatedly parse, consuming each leading
+	// non-flag token as the (first) positional directory, until all flags are
+	// collected. Unknown flags still surface as errors via ContinueOnError.
+	rest := args
+	rootDir := ""
+	for {
+		if err := fs.Parse(rest); err != nil {
+			return Config{}, err
+		}
+		if fs.NArg() == 0 {
+			break
+		}
+		// The first non-flag argument is the positional directory; consume it
+		// and resume parsing the remaining tail for any further flags.
+		if rootDir == "" {
+			rootDir = fs.Arg(0)
+		}
+		rest = fs.Args()[1:]
 	}
 
 	// --version short-circuits before any directory validation so it works
@@ -45,9 +63,8 @@ func ParseArgs(args []string) (Config, error) {
 		return Config{ShowVersion: true}, nil
 	}
 
-	rootDir := "."
-	if fs.NArg() > 0 {
-		rootDir = fs.Arg(0)
+	if rootDir == "" {
+		rootDir = "."
 	}
 
 	info, err := os.Stat(rootDir)
