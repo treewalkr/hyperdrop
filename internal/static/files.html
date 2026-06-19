@@ -31,8 +31,22 @@
       --radius: 16px;
       --radius-sm: 12px;
       --header-h: 56px;
+      /* Combined height of the stacked sticky bars (header + breadcrumb).
+         Header is fixed at --header-h; the breadcrumb bar is one line of
+         crumbs with 0.6rem vertical padding + a 1px bottom border. Measured
+         at 43px in-browser (0.6rem*2 ~= 19.2px + ~13.6px*1.5 line ~= 20.4px
+         + 1px border + rounding). Drives scroll-padding-top so anchor/
+         programmatic scroll lands below the sticky stack and the first item
+         is never clipped on scroll-to-top or in-page navigation (issue #18). */
+      --breadcrumb-h: 43px;
+      --sticky-stack-h: calc(var(--header-h) + var(--breadcrumb-h));
       --gradient-accent: linear-gradient(135deg, #7c6cf0, #4ecdc4);
     }
+
+    /* Anchor/programmatic scroll lands below the stacked sticky header +
+       breadcrumb bar in every variant, so the first item is never clipped
+       on scroll-to-top or in-page navigation (issue #18). */
+    html { scroll-padding-top: var(--sticky-stack-h); }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
