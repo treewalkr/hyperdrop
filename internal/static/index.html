@@ -941,10 +941,27 @@
           const file = data.file || {};
           const f = this.files.find((x) => x.name === file.name && x.status === 'uploading');
           if (!f) return;
+          // Fill the bar to 100% right away (the CSS width transition animates
+          // it), then finalize. An instant upload (small file / fast link)
+          // would otherwise flip to done in the same frame the card was created
+          // and the bar would never be seen — hold the uploading state briefly
+          // so the fill is actually visible. No delay for uploads that already
+          // took longer than the minimum.
           f.progress = 100;
-          f.status = 'done';
-          f.speed = 0;
-          this.toast(f.name + ' uploaded', 'success');
+          const elapsed = Date.now() - (f.startedAt || Date.now());
+          const minVisible = 350;
+          const finalize = () => {
+            // Bail if the card was cancelled/dismissed during the hold.
+            if (!this.files.includes(f) || f.status !== 'uploading') return;
+            f.status = 'done';
+            f.speed = 0;
+            this.toast(f.name + ' uploaded', 'success');
+          };
+          if (elapsed >= minVisible) {
+            finalize();
+          } else {
+            setTimeout(finalize, minVisible - elapsed);
+          }
         },
 
         // Remove ?token from the address bar without disturbing other params.
