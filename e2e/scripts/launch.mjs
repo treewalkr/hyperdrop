@@ -11,14 +11,12 @@ import { mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PORT, TOKEN } from '../lib/config.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // e2e/scripts/launch.mjs -> e2e/ then repo root.
 const e2eDir = path.resolve(here, '..');
 const repoRoot = path.resolve(e2eDir, '..');
-
-const TOKEN = 'e2e-token';
-const PORT = 8090;
 // Fixed upload root under the OS temp dir, shared with the isolation fixture.
 const uploadDir = path.join(tmpdir(), 'hyperdrop-e2e-uploads');
 

@@ -1,12 +1,13 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test, expect } from '@playwright/test';
 import { wipeUploads } from '../fixtures/isolation.js';
+import { TOKEN } from '../lib/config.mjs';
 
-// Token the launch script starts the binary with. The first page request sets
-// the session cookie; the token is only needed for that initial navigation.
-const TOKEN = 'e2e-token';
+// The token comes from lib/config.json — the single source shared with the
+// launch script and playwright.config.ts. The first page request sets the
+// session cookie; the token is only needed for that initial navigation.
 
 // Writes a fixture file into a unique temp subdir and returns its path. The
 // basename is preserved so the page shows the intended filename; the unique
@@ -38,13 +39,17 @@ test('uploading a file via the input shows its name and a success toast', async 
 
 test('uploaded file appears on the Files page and can be downloaded', async ({ page }) => {
   await page.goto(`/?token=${TOKEN}`);
-  await page.getByTestId('file-input').setInputFiles(fixture('round-trip.txt', 'round trip body'));
+  const body = 'round trip body';
+  await page.getByTestId('file-input').setInputFiles(fixture('round-trip.txt', body));
 
   // Wait for the upload to land on disk before leaving the Send page.
   await expect(page.getByTestId('toasts')).toContainText('round-trip.txt uploaded');
 
   await page.getByTestId('nav-files').click();
   await expect(page).toHaveURL(/\/files/);
+  // `file-name` is also used on the Send page's file cards; here it resolves to
+  // the single uploaded row. Once multi-file specs land, scope this locator
+  // (e.g. within a `file-item`) to avoid ambiguity.
   await expect(page.getByTestId('file-name')).toHaveText('round-trip.txt');
 
   // The download action is hover-revealed; force-click skips that visibility gate.
@@ -53,5 +58,7 @@ test('uploaded file appears on the Files page and can be downloaded', async ({ p
     page.getByTestId('download').click({ force: true }),
   ]);
   expect(download.suggestedFilename()).toBe('round-trip.txt');
+  // Close the loop on the actual bytes, not just the filename/event.
+  expect(readFileSync(await download.path(), 'utf8')).toBe(body);
 });
 

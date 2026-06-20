@@ -6,12 +6,15 @@
 //
 // Scans code/script/config files (not prose .md, which legitimately quotes the
 // forbidden forms to warn against them). Skips its own source, which has to name
-// the tokens to match them.
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+// the tokens to match them. Also scans the repo's CI workflows — the most likely
+// place someone reaches for `bunx` — not just the e2e/ tree.
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const repoRoot = path.resolve(root, '..');
+const workflowsDir = path.join(repoRoot, '.github', 'workflows');
 const self = fileURLToPath(import.meta.url);
 const SKIP_DIRS = new Set(['node_modules', '.cache', 'test-results', 'playwright-report', '.git']);
 const SCAN_EXT = /\.(mjs|js|ts|cjs|json|sh|yml|yaml)$/;
@@ -43,6 +46,7 @@ function walk(dir) {
 }
 
 walk(root);
+if (existsSync(workflowsDir)) walk(workflowsDir);
 
 if (offenders.length) {
   console.error('Playwright toolchain rule violated (bun installs, npx runs):');

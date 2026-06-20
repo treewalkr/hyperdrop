@@ -5,8 +5,9 @@ import { defineConfig, devices } from '@playwright/test';
 // Never route the Playwright CLI through Bun — `scripts/check-toolchain.mjs`
 // guards against that (it is unsupported/flaky).
 
-const PORT = 8090;
-const TOKEN = 'e2e-token';
+// Shared with scripts/launch.mjs and tests/*.spec.ts via lib/config.mjs so the
+// token/port the server starts with and the harness polls cannot drift.
+import { PORT, TOKEN } from './lib/config.mjs';
 
 export default defineConfig({
   testDir: './tests',
@@ -30,6 +31,9 @@ export default defineConfig({
   webServer: {
     command: 'node scripts/launch.mjs',
     url: `http://localhost:${PORT}/?token=${TOKEN}`,
+    // Locally, reuse a server already on :PORT if present — convenient for
+    // re-runs, but note it will attach to *any* process answering the URL,
+    // not necessarily one this harness started. CI always starts fresh.
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     stdout: 'pipe',
