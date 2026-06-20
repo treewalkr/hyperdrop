@@ -61,11 +61,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'bun'
-          cache-dependency-path: e2e/bun.lock
 
       - name: Set up Bun
+        # setup-bun owns Bun dependency caching (setup-node can't cache 'bun').
         uses: oven-sh/setup-bun@v2
+        with:
+          cache: e2e/bun.lock
 
       - name: Build binary
         run: go build -o hyperdrop ./cmd/hyperdrop
