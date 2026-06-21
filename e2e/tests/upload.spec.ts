@@ -1,11 +1,11 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test, expect } from '@playwright/test';
 import { wipeUploads } from '../fixtures/isolation.js';
 import { TOKEN } from '../lib/config.mjs';
 
-// The token comes from lib/config.json — the single source shared with the
+// The token comes from lib/config.mjs — the single source shared with the
 // launch script and playwright.config.ts. The first page request sets the
 // session cookie; the token is only needed for that initial navigation.
 
@@ -13,8 +13,10 @@ import { TOKEN } from '../lib/config.mjs';
 // basename is preserved so the page shows the intended filename; the unique
 // parent keeps parallel workers from clobbering each other.
 let fixtureCounter = 0;
+const fixtureDirs: string[] = [];
 function fixture(name: string, contents: string): string {
   const dir = path.join(tmpdir(), `hd-e2e-${process.pid}-${fixtureCounter++}`);
+  fixtureDirs.push(dir);
   mkdirSync(dir, { recursive: true });
   const p = path.join(dir, name);
   writeFileSync(p, contents);
@@ -23,6 +25,10 @@ function fixture(name: string, contents: string): string {
 
 // Every test starts from an empty upload root.
 test.beforeEach(() => wipeUploads());
+// Drop the fixture temp dirs so the suite doesn't litter $TMPDIR across runs.
+test.afterAll(() => {
+  for (const dir of fixtureDirs) rmSync(dir, { recursive: true, force: true });
+});
 
 test('Send page renders the dropzone', async ({ page }) => {
   await page.goto(`/?token=${TOKEN}`);

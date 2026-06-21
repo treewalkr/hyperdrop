@@ -8,17 +8,14 @@
 // that only runs when E2E_BIN is unset.
 import { spawn, execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PORT, TOKEN } from '../lib/config.mjs';
+import { PORT, TOKEN, UPLOAD_DIR } from '../lib/config.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // e2e/scripts/launch.mjs -> e2e/ then repo root.
 const e2eDir = path.resolve(here, '..');
 const repoRoot = path.resolve(e2eDir, '..');
-// Fixed upload root under the OS temp dir, shared with the isolation fixture.
-const uploadDir = path.join(tmpdir(), 'hyperdrop-e2e-uploads');
 
 function resolveBinary() {
   if (process.env.E2E_BIN) return process.env.E2E_BIN;
@@ -32,11 +29,11 @@ function resolveBinary() {
 }
 
 // Begin each webServer start from an empty upload root.
-rmSync(uploadDir, { recursive: true, force: true });
-mkdirSync(uploadDir, { recursive: true });
+rmSync(UPLOAD_DIR, { recursive: true, force: true });
+mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const bin = resolveBinary();
-const child = spawn(bin, ['--token', TOKEN, '--port', String(PORT), uploadDir], {
+const child = spawn(bin, ['--token', TOKEN, '--port', String(PORT), UPLOAD_DIR], {
   stdio: ['ignore', 'inherit', 'inherit'],
 });
 
