@@ -669,7 +669,7 @@
     [x-cloak] { display: none !important; }
   </style>
 </head>
-<body x-data="sendPage()" x-init="init()"
+<body x-data="sendPage()"
       :class="{ 'drag-active': dragging }"
       @dragenter.window.prevent="dragEnter()"
       @dragleave.window.prevent="dragLeave()"
@@ -861,6 +861,10 @@
         wsReconnectDelay: 500,     // backoff seed, doubled per failed reconnect
 
         init() {
+          // NOTE: Alpine v3 auto-invokes a component's init() method, so the
+          // <body> tag uses x-data only — no x-init. Adding x-init="init()"
+          // here would run this twice, opening two WebSockets and processing
+          // every event twice (the upload-progress instability in issue #15).
           const params = new URLSearchParams(location.search);
           this.token = params.get('token') || '';
           this.currentPath = (params.get('path') || '').replace(/^\/+|\/+$/g, '');
@@ -924,43 +928,65 @@
           const f = this.files.find((x) => x.name === data.name && x.status === 'uploading');
           if (!f || !f.size) return;
           if (data.bytesWritten > 0) {
-            f.progress = Math.min(100, Math.round((data.bytesWritten / f.size) * 100));
+            // Monotonic: only ever move the bar forward. Out-of-order or
+            // repeated progress events (and the xhr.upload.onprogress fallback)
+            // must not drag an already-higher percentage back down.
+            const pct = Math.min(100, Math.round((data.bytesWritten / f.size) * 100));
+            f.progress = Math.max(f.progress, pct);
             const elapsed = (Date.now() - f.startedAt) / 1000;
             f.speed = elapsed > 0 ? (data.bytesWritten / 1048576 / elapsed).toFixed(1) : '0.0';
           }
         },
 
-        // Server-reported completion: the file_uploaded event fires the instant
-        // the server finishes writing the file, so this is the authoritative
-        // signal to finalize the card (progress 100%, done). xhr.onload stays
-        // as a fallback for when the socket isn't connected, and handles
-        // errors. The success toast fires here; onload skips it if the card is
-        // already done to avoid a double toast.
-        onUploadComplete(data) {
-          const file = data.file || {};
-          const f = this.files.find((x) => x.name === file.name && x.status === 'uploading');
-          if (!f) return;
-          // Fill the bar to 100% right away (the CSS width transition animates
-          // it), then finalize. An instant upload (small file / fast link)
-          // would otherwise flip to done in the same frame the card was created
-          // and the bar would never be seen — hold the uploading state briefly
-          // so the fill is actually visible. No delay for uploads that already
-          // took longer than the minimum.
+        // Authoritative completion for one upload. The server-reported
+        // file_uploaded event (onUploadComplete) is the primary signal;
+        // xhr.onload's 2xx branch (in upload()) is the fallback for when the
+        // socket is down. Both route here so the card finalizes exactly once
+        // regardless of which fires first.
+        //
+        // The entry is re-resolved from this.files by id rather than trusting
+        // the caller's reference: xhr.onload closes over the *raw* object that
+        // was pushed, but Alpine's reactivity lives on the proxy stored in
+        // this.files. Mutating the raw target bypasses the proxy's set trap, so
+        // the data changes but the DOM never re-renders (the card would freeze
+        // on "uploading" while the toast still fired). Looking the proxy up
+        // here keeps every mutation reactive and gives both callers one shared
+        // _finalizing guard so the second signal can't re-schedule or
+        // double-toast.
+        //
+        // The bar is pinned at 100% and held for a short beat before flipping
+        // to "Complete": a fast upload (small file / localhost) finishes within
+        // a single frame, so without the hold the card would jump 0% → done and
+        // the progress fill (animated by the CSS width transition) would never
+        // be seen — the bar would just flicker.
+        finalizeUpload(entry) {
+          if (!entry) return;
+          const f = this.files.find((x) => x.id === entry.id);
+          if (!f || f.status !== 'uploading' || f._finalizing) return;
+          f._finalizing = true;
           f.progress = 100;
           const elapsed = Date.now() - (f.startedAt || Date.now());
           const minVisible = 350;
-          const finalize = () => {
+          const done = () => {
             // Bail if the card was cancelled/dismissed during the hold.
             if (!this.files.includes(f) || f.status !== 'uploading') return;
             f.status = 'done';
             f.speed = 0;
             this.toast(f.name + ' uploaded', 'success');
           };
-          if (elapsed >= minVisible) {
-            finalize();
-          } else {
-            setTimeout(finalize, minVisible - elapsed);
-          }
+          if (elapsed >= minVisible) done();
+          else setTimeout(done, minVisible - elapsed);
+        },
+
+        // Server-reported completion: the file_uploaded event fires the instant
+        // the server finishes writing the file, so this is the authoritative
+        // signal to finalize the card. Delegates to finalizeUpload so the
+        // minVisible hold and double-completion guard are shared with the
+        // xhr.onload fallback.
+        onUploadComplete(data) {
+          const file = data.file || {};
+          const f = this.files.find((x) => x.name === file.name && x.status === 'uploading');
+          if (f) this.finalizeUpload(f);
         },
 
         // Remove ?token from the address bar without disturbing other params.
@@ -1069,15 +1095,12 @@
           xhr.onload = () => {
             entry.xhr = null;
             if (xhr.status >= 200 && xhr.status < 300) {
-              // file_uploaded over the WS is the authoritative completion and
-              // already finalized + toasted the card. Only act here if the WS
-              // never delivered it (e.g. socket down) — the fallback path.
-              if (entry.status !== 'done') {
-                entry.progress = 100;
-                entry.status = 'done';
-                entry.speed = 0;
-                this.toast(entry.name + ' uploaded', 'success');
-              }
+              // Fallback completion path: finalizeUpload is shared with the
+              // authoritative file_uploaded handler over the WS. Whichever
+              // fires first owns the (held) 100% → done transition; the other
+              // is a no-op via the _finalizing guard, so there's no double
+              // toast. On a fast link this typically fires before the WS event.
+              this.finalizeUpload(entry);
             } else {
               entry.status = 'error';
               this.toast(entry.name + ' failed (' + xhr.status + ')', 'error');
