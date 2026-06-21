@@ -17,6 +17,10 @@
 coverage.out
 coverage.html
 
+# Playwright artifacts (also ignored inside e2e/)
+test-results/
+playwright-report/
+
 # Local environment files
 .env
 .env.local
