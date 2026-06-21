@@ -689,11 +689,11 @@
   <header class="app-header">
     <a href="/" class="brand">HyperDrop</a>
     <nav class="header-nav">
-      <a href="/" class="active" title="Upload files" aria-label="Send files">
+      <a href="/" class="active" data-testid="nav-send" title="Upload files" aria-label="Send files">
         <svg stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
         Send
       </a>
-      <a href="/files" title="Manage files" aria-label="Browse files">
+      <a href="/files" data-testid="nav-files" title="Manage files" aria-label="Browse files">
         <svg stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
         Files
       </a>
@@ -709,6 +709,7 @@
     </div>
 
     <div class="nebula-dropzone"
+         data-testid="dropzone"
          role="button" tabindex="0"
          aria-label="Drop files here or click to browse"
          :class="{ dragover: dzOver }"
@@ -733,10 +734,10 @@
       </template>
 
       <template x-for="f in files" :key="f.id">
-        <div class="file-card" :class="{ 'state-error': f.status === 'error' }">
+        <div class="file-card" data-testid="file-item" :class="{ 'state-error': f.status === 'error' }">
           <div class="file-icon" :class="f.category" x-text="f.ext || '?'"></div>
           <div class="file-info">
-            <div class="file-name" :title="f.name" x-text="f.name"></div>
+            <div class="file-name" data-testid="file-name" :title="f.name" x-text="f.name"></div>
             <div class="file-meta">
               <span x-text="formatSize(f.size)"></span>
               <template x-if="f.status === 'uploading'">
@@ -825,14 +826,14 @@
   </div>
 
   <!-- TOASTS -->
-  <div class="toast-container" aria-live="polite">
+  <div class="toast-container" data-testid="toasts" aria-live="polite">
     <template x-for="t in toasts" :key="t.id">
       <div class="toast" :class="t.type" x-text="t.msg"></div>
     </template>
   </div>
 
   <!-- Hidden file input -->
-  <input type="file" multiple x-ref="fileInput" style="display:none" @change="onFilePick($event)" aria-hidden="true">
+  <input type="file" multiple data-testid="file-input" x-ref="fileInput" style="display:none" @change="onFilePick($event)" aria-hidden="true">
 
   <script>
     function sendPage() {

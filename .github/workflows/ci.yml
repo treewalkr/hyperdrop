@@ -42,3 +42,50 @@ jobs:
 
       - name: go test
         run: go test -race ./...
+
+  e2e:
+    runs-on: ubuntu-latest
+    # Browser E2E is decoupled from the Go checks so flakiness here never gates
+    # fmt/vet/build/test. Drives the real binary built in the step below.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up Bun
+        # setup-bun owns Bun dependency caching (setup-node can't cache 'bun').
+        uses: oven-sh/setup-bun@v2
+        with:
+          cache: e2e/bun.lock
+
+      - name: Build binary
+        run: go build -o hyperdrop ./cmd/hyperdrop
+
+      - name: Install E2E deps
+        working-directory: e2e
+        run: bun install --frozen-lockfile
+
+      - name: Toolchain rule check
+        working-directory: e2e
+        run: bun run check
+
+      - name: Install Playwright browser
+        working-directory: e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        working-directory: e2e
+        env:
+          # Pre-built binary: the launch script skips its in-script `go build`.
+          E2E_BIN: ${{ github.workspace }}/hyperdrop
+        run: npx playwright test
