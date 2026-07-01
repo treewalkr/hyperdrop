@@ -113,6 +113,21 @@ func readEvent(t *testing.T, c *websocket.Conn) map[string]any {
 	return ev
 }
 
+// readEventOfType reads WS messages until one of the wanted type arrives,
+// skipping upload_progress events that now precede the terminal file_uploaded.
+func readEventOfType(t *testing.T, c *websocket.Conn, want string) map[string]any {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		ev := readEvent(t, c)
+		if ev["type"] == want {
+			return ev
+		}
+	}
+	t.Fatalf("no %q event within deadline", want)
+	return nil
+}
+
 func TestWS_Upload_BroadcastsFileUploaded(t *testing.T) {
 	root := t.TempDir()
 	r := NewRouter(cli.Config{RootDir: root, Token: testToken})
@@ -127,10 +142,7 @@ func TestWS_Upload_BroadcastsFileUploaded(t *testing.T) {
 
 	uploadOne(t, ts, testToken, "photo.jpg", "pic")
 
-	ev := readEvent(t, c)
-	if ev["type"] != "file_uploaded" {
-		t.Fatalf("type: got %v, want file_uploaded", ev["type"])
-	}
+	ev := readEventOfType(t, c, "file_uploaded")
 	file, ok := ev["file"].(map[string]any)
 	if !ok {
 		t.Fatalf("missing file payload: %v", ev)
@@ -232,9 +244,10 @@ func TestWS_MultipleClients_AllReceive(t *testing.T) {
 	uploadOne(t, ts, testToken, "shared.txt", "hi")
 
 	for _, c := range []*websocket.Conn{a, b} {
-		ev := readEvent(t, c)
-		if ev["type"] != "file_uploaded" {
-			t.Errorf("client missed event: got %v", ev["type"])
+		ev := readEventOfType(t, c, "file_uploaded")
+		file, _ := ev["file"].(map[string]any)
+		if file["name"] != "shared.txt" {
+			t.Errorf("client missed event: got %v", ev)
 		}
 	}
 }
@@ -257,17 +270,14 @@ func TestWS_Upload_PathScoped(t *testing.T) {
 	// Into a nested directory; the event must name that directory.
 	uploadOneTo(t, ts, testToken, "photos/2024", "pic.jpg", "x")
 
-	ev := readEvent(t, c)
-	if ev["type"] != "file_uploaded" {
-		t.Fatalf("type: got %v, want file_uploaded", ev["type"])
-	}
+	ev := readEventOfType(t, c, "file_uploaded")
 	if got, want := ev["path"], "photos/2024"; got != want {
 		t.Errorf("path: got %v, want %q", got, want)
 	}
 
 	// Into root; path must be "" so a root view matches.
 	uploadOneTo(t, ts, testToken, "", "doc.pdf", "x")
-	ev = readEvent(t, c)
+	ev = readEventOfType(t, c, "file_uploaded")
 	if got, want := ev["path"], ""; got != want {
 		t.Errorf("root path: got %v, want %q", got, want)
 	}

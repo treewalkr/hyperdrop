@@ -669,7 +669,7 @@
     [x-cloak] { display: none !important; }
   </style>
 </head>
-<body x-data="sendPage()" x-init="init()"
+<body x-data="sendPage()"
       :class="{ 'drag-active': dragging }"
       @dragenter.window.prevent="dragEnter()"
       @dragleave.window.prevent="dragLeave()"
@@ -857,8 +857,14 @@
         confirmBody: '',
         confirmOkLabel: 'Remove',
         _confirmResolve: null,
+        ws: null,                  // live WebSocket for server-reported progress
+        wsReconnectDelay: 500,     // backoff seed, doubled per failed reconnect
 
         init() {
+          // NOTE: Alpine v3 auto-invokes a component's init() method, so the
+          // <body> tag uses x-data only — no x-init. Adding x-init="init()"
+          // here would run this twice, opening two WebSockets and processing
+          // every event twice (the upload-progress instability in issue #15).
           const params = new URLSearchParams(location.search);
           this.token = params.get('token') || '';
           this.currentPath = (params.get('path') || '').replace(/^\/+|\/+$/g, '');
@@ -870,6 +876,117 @@
           // NOTE: history.replaceState is not exercised by the Go HTTP tests;
           // manually verified, regression coverage pending E2E (#20/#21).
           this.stripTokenFromURL();
+          // Subscribe to server-reported upload progress (issue #15). The bar
+          // is driven by bytes the server writes to disk, not by how much the
+          // browser has buffered on the socket — the latter never moves on a
+          // fast LAN/localhost link.
+          this.connectWS();
+        },
+
+        // Open the real-time event stream. Mirrors the Files page: reconnects
+        // with exponential backoff so a dropped socket recovers without a page
+        // reload. Only upload_progress is consumed here; completion is handled
+        // authoritatively by xhr.onload (and the terminal file_uploaded it
+        // corresponds to).
+        connectWS() {
+          const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const url = proto + '//' + location.host + '/api/ws' + this.qs;
+          let ws;
+          try {
+            ws = new WebSocket(url);
+          } catch (e) {
+            this.scheduleReconnect();
+            return;
+          }
+          this.ws = ws;
+          this.wsReconnectDelay = 500;
+
+          ws.onmessage = (ev) => {
+            let data;
+            try { data = JSON.parse(ev.data); } catch (e) { return; }
+            if (data.type === 'upload_progress') this.onUploadProgress(data);
+            else if (data.type === 'file_uploaded') this.onUploadComplete(data);
+          };
+          ws.onclose = () => { this.ws = null; this.scheduleReconnect(); };
+          ws.onerror = () => { try { ws.close(); } catch (e) {} };
+        },
+
+        scheduleReconnect() {
+          const delay = this.wsReconnectDelay;
+          this.wsReconnectDelay = Math.min(delay * 2, 16000);
+          setTimeout(() => this.connectWS(), delay);
+        },
+
+        // Server-reported bytes for an in-flight file. Authoritative over the
+        // client-only xhr.upload.onprogress signal (which rarely fires on fast
+        // links). The denominator is the file's known size (f.size), NOT the
+        // server's total: r.ContentLength is unavailable for chunked uploads
+        // and is the whole-request size for multi-file uploads, so the server's
+        // total is only a hint. Completion is driven by onUploadComplete
+        // (file_uploaded), so this only advances the bar mid-transfer.
+        onUploadProgress(data) {
+          const f = this.files.find((x) => x.name === data.name && x.status === 'uploading');
+          if (!f || !f.size) return;
+          if (data.bytesWritten > 0) {
+            // Monotonic: only ever move the bar forward. Out-of-order or
+            // repeated progress events (and the xhr.upload.onprogress fallback)
+            // must not drag an already-higher percentage back down.
+            const pct = Math.min(100, Math.round((data.bytesWritten / f.size) * 100));
+            f.progress = Math.max(f.progress, pct);
+            const elapsed = (Date.now() - f.startedAt) / 1000;
+            f.speed = elapsed > 0 ? (data.bytesWritten / 1048576 / elapsed).toFixed(1) : '0.0';
+          }
+        },
+
+        // Authoritative completion for one upload. The server-reported
+        // file_uploaded event (onUploadComplete) is the primary signal;
+        // xhr.onload's 2xx branch (in upload()) is the fallback for when the
+        // socket is down. Both route here so the card finalizes exactly once
+        // regardless of which fires first.
+        //
+        // The entry is re-resolved from this.files by id rather than trusting
+        // the caller's reference: xhr.onload closes over the *raw* object that
+        // was pushed, but Alpine's reactivity lives on the proxy stored in
+        // this.files. Mutating the raw target bypasses the proxy's set trap, so
+        // the data changes but the DOM never re-renders (the card would freeze
+        // on "uploading" while the toast still fired). Looking the proxy up
+        // here keeps every mutation reactive and gives both callers one shared
+        // _finalizing guard so the second signal can't re-schedule or
+        // double-toast.
+        //
+        // The bar is pinned at 100% and held for a short beat before flipping
+        // to "Complete": a fast upload (small file / localhost) finishes within
+        // a single frame, so without the hold the card would jump 0% → done and
+        // the progress fill (animated by the CSS width transition) would never
+        // be seen — the bar would just flicker.
+        finalizeUpload(entry) {
+          if (!entry) return;
+          const f = this.files.find((x) => x.id === entry.id);
+          if (!f || f.status !== 'uploading' || f._finalizing) return;
+          f._finalizing = true;
+          f.progress = 100;
+          const elapsed = Date.now() - (f.startedAt || Date.now());
+          const minVisible = 350;
+          const done = () => {
+            // Bail if the card was cancelled/dismissed during the hold.
+            if (!this.files.includes(f) || f.status !== 'uploading') return;
+            f.status = 'done';
+            f.speed = 0;
+            this.toast(f.name + ' uploaded', 'success');
+          };
+          if (elapsed >= minVisible) done();
+          else setTimeout(done, minVisible - elapsed);
+        },
+
+        // Server-reported completion: the file_uploaded event fires the instant
+        // the server finishes writing the file, so this is the authoritative
+        // signal to finalize the card. Delegates to finalizeUpload so the
+        // minVisible hold and double-completion guard are shared with the
+        // xhr.onload fallback.
+        onUploadComplete(data) {
+          const file = data.file || {};
+          const f = this.files.find((x) => x.name === file.name && x.status === 'uploading');
+          if (f) this.finalizeUpload(f);
         },
 
         // Remove ?token from the address bar without disturbing other params.
@@ -940,6 +1057,7 @@
               status: 'uploading',
               speed: 0,
               xhr: null,
+              startedAt: Date.now(),
             };
             this.files.push(entry);
             this.upload(entry);
@@ -960,21 +1078,29 @@
 
           const xhr = new XMLHttpRequest();
           entry.xhr = xhr;
-          const startedAt = Date.now();
+          entry.startedAt = Date.now();
 
+          // Secondary signal only (issue #15): measures bytes the browser has
+          // handed to the socket, which on a fast LAN/localhost link leaves the
+          // buffer almost instantly and so rarely fires mid-upload. Server-
+          // reported progress via WebSocket (onUploadProgress) is authoritative;
+          // this never moves the bar backward, only forward as a fallback.
           xhr.upload.onprogress = (e) => {
             if (!e.lengthComputable) return;
-            entry.progress = Math.round((e.loaded / e.total) * 100);
-            const elapsed = (Date.now() - startedAt) / 1000;
+            const pct = Math.round((e.loaded / e.total) * 100);
+            entry.progress = Math.max(entry.progress, pct);
+            const elapsed = (Date.now() - entry.startedAt) / 1000;
             entry.speed = elapsed > 0 ? (e.loaded / 1048576 / elapsed).toFixed(1) : '0.0';
           };
           xhr.onload = () => {
             entry.xhr = null;
             if (xhr.status >= 200 && xhr.status < 300) {
-              entry.progress = 100;
-              entry.status = 'done';
-              entry.speed = 0;
-              this.toast(entry.name + ' uploaded', 'success');
+              // Fallback completion path: finalizeUpload is shared with the
+              // authoritative file_uploaded handler over the WS. Whichever
+              // fires first owns the (held) 100% → done transition; the other
+              // is a no-op via the _finalizing guard, so there's no double
+              // toast. On a fast link this typically fires before the WS event.
+              this.finalizeUpload(entry);
             } else {
               entry.status = 'error';
               this.toast(entry.name + ' failed (' + xhr.status + ')', 'error');

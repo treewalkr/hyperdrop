@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -71,6 +72,84 @@ type uploadResult struct {
 	Size int64  `json:"size"`
 }
 
+const (
+	// progressChunk is the read/write granularity used while streaming an
+	// uploaded part to disk. It bounds how much can be reported in a single
+	// progress event: capping the read here guarantees the first event of an
+	// upload cannot jump straight to total (so 0 < bytesWritten < total holds
+	// for any upload larger than one chunk).
+	progressChunk = 64 * 1024
+
+	// progressInterval is the per-file flood guard on upload_progress events.
+	// A naive per-chunk broadcast would yield total/progressChunk events for a
+	// large file, flooding every connected browser. The handler instead emits
+	// at most one event per progressInterval: the first chunk always fires
+	// (the prior-emit time is the zero value, so elapsed ≫ interval), then at
+	// most one per interval thereafter.
+	progressInterval = 100 * time.Millisecond
+)
+
+// uploadProgressEvent carries the invariant fields shared by every progress
+// broadcast for one file; bytesWritten and total are filled in per emit.
+type uploadProgressEvent struct {
+	path string
+	name string
+}
+
+// copyProgressed streams src to dst in progressChunk-sized chunks, returning
+// the total bytes copied. As bytes accumulate it broadcasts throttled
+// upload_progress events through hub: total is the announced upload size (the
+// whole multipart request's Content-Length) used only to render a fraction —
+// the terminal file_uploaded event broadcast by the caller marks completion.
+func copyProgressed(dst io.Writer, src io.Reader, hub *Hub, ev uploadProgressEvent, total int64) (int64, error) {
+	var written int64
+	buf := make([]byte, progressChunk)
+	var last time.Time
+	for {
+		n, rerr := src.Read(buf)
+		if n > 0 {
+			nw, werr := dst.Write(buf[:n])
+			written += int64(nw)
+			now := time.Now()
+			if now.Sub(last) >= progressInterval {
+				last = now
+				hub.broadcast(map[string]any{
+					"type":         "upload_progress",
+					"path":         ev.path,
+					"name":         ev.name,
+					"bytesWritten": written,
+					"total":        total,
+				})
+			}
+			if werr != nil {
+				return written, werr
+			}
+			if nw < n {
+				return written, io.ErrShortWrite
+			}
+		}
+		if rerr == io.EOF {
+			// Terminal flush: a fast upload can complete entirely inside one
+			// throttle window, which would leave the bar pinned at the first
+			// chunk's fraction. Emit the final byte count so clients always see
+			// the bar climb toward 100% before the caller's file_uploaded marks
+			// completion. This is a single event, so the per-100ms ceiling still
+			// holds.
+			hub.broadcast(map[string]any{
+				"type":         "upload_progress",
+				"path":         ev.path,
+				"name":         ev.name,
+				"bytesWritten": written,
+				"total":        total,
+			})
+			return written, nil
+		}
+		if rerr != nil {
+			return written, rerr
+		}
+	}
+}
+
 func uploadHandler(cfg cli.Config, hub *Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if cfg.MaxSize > 0 {
@@ -126,7 +205,10 @@ func uploadHandler(cfg cli.Config, hub *Hub) http.HandlerFunc {
 				return
 			}
 
-			n, err := io.Copy(f, part)
+			n, err := copyProgressed(f, part, hub, uploadProgressEvent{
+				path: relDir,
+				name: filename,
+			}, r.ContentLength)
 			f.Close()
 			if err != nil {
 				os.Remove(dest)

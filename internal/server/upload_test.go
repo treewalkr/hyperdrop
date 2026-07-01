@@ -14,6 +14,131 @@ import (
 	"github.com/treewalkr/hyperdrop/internal/cli"
 )
 
+// TestUpload_BroadcastsThrottledProgress is the CI-deterministic gate for issue
+// #15: server-reported upload progress over the WebSocket event bus. It uploads
+// a large file through httptest while subscribed to the Hub and asserts the
+// broadcast path emits throttled progress events plus the terminal completion.
+//
+// Determinism, no LAN and no sleeps required:
+//   - Hub.broadcast is synchronous and queues into the subscriber channel
+//     before the upload handler returns, so all events are queued by the time
+//     the HTTP response arrives — draining the channel is sleep-free.
+//   - copyProgressed reads in 64KB chunks, so the first progress emit cannot
+//     jump straight to total; with a >64KB upload the first emit satisfies
+//     0 < bytesWritten < total regardless of read granularity.
+func TestUpload_BroadcastsThrottledProgress(t *testing.T) {
+	const contentSize = 1 << 20 // 1 MiB → 16 × 64KB chunks
+
+	root := t.TempDir()
+	cfg := cli.Config{RootDir: root, Token: "secret123"}
+	r, hub := newRouterWithHub(cfg)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	// Subscribe BEFORE the upload so every broadcast is captured.
+	sub := hub.subscribe()
+	defer hub.unsubscribe(sub)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("file", "big.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(bytes.Repeat([]byte("x"), contentSize)); err != nil {
+		t.Fatal(err)
+	}
+	writer.Close()
+
+	totalBody := int64(body.Len()) // multipart body length = r.ContentLength
+
+	req, err := http.NewRequest("POST", ts.URL+"/api/upload?token=secret123", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status: got %d, want 200. body: %s", resp.StatusCode, b)
+	}
+
+	// All broadcasts happened synchronously inside the handler; drain what's
+	// queued without waiting on a clock.
+	var progress []map[string]any
+	var sawUploaded bool
+drain:
+	for {
+		select {
+		case raw := <-sub.out:
+			var ev map[string]any
+			if err := json.Unmarshal(raw, &ev); err != nil {
+				t.Fatalf("unmarshal event: %v (raw=%s)", err, raw)
+			}
+			switch ev["type"] {
+			case "upload_progress":
+				progress = append(progress, ev)
+			case "file_uploaded":
+				sawUploaded = true
+			}
+		default:
+			break drain
+		}
+	}
+
+	// (a) At least one mid-upload progress event with 0 < bytesWritten < total.
+	var sawMidUpload bool
+	for _, ev := range progress {
+		bw, _ := ev["bytesWritten"].(float64)
+		total, _ := ev["total"].(float64)
+		name, _ := ev["name"].(string)
+		if name != "big.bin" {
+			t.Errorf("progress event name: got %v, want big.bin", ev["name"])
+		}
+		if total != float64(totalBody) {
+			t.Errorf("progress total: got %v, want %d", ev["total"], totalBody)
+		}
+		if bw > 0 && bw < total {
+			sawMidUpload = true
+		}
+	}
+	if len(progress) == 0 {
+		t.Fatal("no upload_progress events emitted")
+	}
+	if !sawMidUpload {
+		t.Errorf("no upload_progress event with 0 < bytesWritten < total; got %+v", progress)
+	}
+
+	// Terminal flush: the final byte count is always emitted so a fast upload
+	// (whose body lands inside one throttle window) still climbs the bar to
+	// ~100% before file_uploaded. The flush carries the full file content size.
+	var maxWritten float64
+	for _, ev := range progress {
+		if bw, _ := ev["bytesWritten"].(float64); bw > maxWritten {
+			maxWritten = bw
+		}
+	}
+	if maxWritten != float64(contentSize) {
+		t.Errorf("terminal flush missing: max bytesWritten=%v, want %d (full file)", maxWritten, contentSize)
+	}
+
+	// (b) Terminal completion event.
+	if !sawUploaded {
+		t.Error("no terminal file_uploaded event emitted")
+	}
+
+	// (c) Throttle ceiling: fewer events than naive per-64KB-chunk flooding.
+	ceiling := int64(contentSize) / (64 * 1024)
+	if int64(len(progress)) >= ceiling {
+		t.Errorf("throttle ceiling violated: got %d progress events, want < %d (totalBytes/64KB)", len(progress), ceiling)
+	}
+}
+
 func TestUpload_SingleFile_Saves(t *testing.T) {
 	root := t.TempDir()
 	cfg := cli.Config{RootDir: root, Token: "secret123"}
