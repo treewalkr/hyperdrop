@@ -523,17 +523,33 @@
     }
     .act-btn svg { width: 16px; height: 16px; }
 
-    /* Folder-pick link under the dropzone and folder-group cards (issue #30) */
+    /* Folder-pick icon button tucked into the dropzone corner (issue #30) */
     .nebula-dropzone .folder-pick {
-      display: block;
-      margin-top: 0.75rem;
-      font-size: 0.8rem;
+      position: absolute;
+      right: 0.9rem;
+      bottom: 0.7rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      border: none;
+      border-radius: 8px;
+      background: transparent;
       color: var(--text-muted);
-      text-decoration: underline;
-      text-underline-offset: 3px;
       cursor: pointer;
+      opacity: 0.55;
+      transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
     }
-    .nebula-dropzone .folder-pick:hover { color: var(--accent, #7c6cf0); }
+    .nebula-dropzone .folder-pick svg { width: 18px; height: 18px; }
+    .nebula-dropzone .folder-pick:hover,
+    .nebula-dropzone .folder-pick:focus-visible {
+      opacity: 1;
+      color: var(--accent, #7c6cf0);
+      background: rgba(124,108,240,0.12);
+      outline: none;
+    }
 
     .folder-card {
       border: 1px solid var(--glass-border, rgba(255,255,255,0.08));
@@ -793,10 +809,11 @@
         <svg fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
         <span class="label">Drag here or <span class="browse">browse</span></span>
       </div>
-      <a class="folder-pick" data-testid="folder-pick" href="#"
-         @click.prevent.stop="$refs.folderInput.click()"
-         @keydown.enter.prevent.stop="$refs.folderInput.click()"
-         role="button" tabindex="0">or pick a whole folder</a>
+      <button class="folder-pick" data-testid="folder-pick" type="button"
+              @click.prevent.stop="$refs.folderInput.click()"
+              title="Pick a folder" aria-label="Pick a folder">
+        <svg fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M4 20a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2Z"/></svg>
+      </button>
     </div>
 
     <div class="file-list">
