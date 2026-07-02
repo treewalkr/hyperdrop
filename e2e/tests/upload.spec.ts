@@ -213,4 +213,28 @@ test('a folder upload whose relative path escapes the root is rejected by the se
   expect(readdirSync(UPLOAD_DIR).length).toBe(0);
 });
 
+// =============================================================================
+// Name collision (issue #16). Re-uploading an existing name must rename to
+// "name (1).ext" rather than overwrite, and the Send card must reconcile to
+// the actually-written name carried in the upload response — otherwise the
+// displayed name and the delete/download/share actions would target the
+// pre-existing file (silent data loss on delete).
+// =============================================================================
+
+test('re-uploading an existing name renames it and reconciles the card', async ({ page }) => {
+  // Pre-existing file in the upload root — the collision target.
+  writeFileSync(path.join(UPLOAD_DIR, 'dupe.txt'), 'original');
+
+  await page.goto(`/?token=${TOKEN}`);
+  await page.getByTestId('file-input').setInputFiles(fixture('dupe.txt', 'new'));
+
+  // The card reconciles to the actually-written name (not the requested one).
+  await expect(page.getByTestId('file-name')).toHaveText('dupe (1).txt');
+  await expect(page.getByTestId('toasts')).toContainText('dupe (1).txt uploaded');
+
+  // Both files survive on disk; the original is untouched (no overwrite).
+  expect(readFileSync(path.join(UPLOAD_DIR, 'dupe.txt'), 'utf8')).toBe('original');
+  expect(readFileSync(path.join(UPLOAD_DIR, 'dupe (1).txt'), 'utf8')).toBe('new');
+});
+
 
