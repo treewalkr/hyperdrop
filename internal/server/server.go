@@ -231,11 +231,17 @@ func uploadHandler(cfg cli.Config, hub *Hub) http.HandlerFunc {
 
 			n, err := copyProgressed(f, part, hub, uploadProgressEvent{
 				path: evPath,
-				// Full relative filename (e.g. "vacation/sub/a (1).txt") so the
-				// uploader can match progress to the exact entry even when two
-				// files in different subfolders share a basename. The terminal
-				// file_uploaded below uses the basename for display.
-				name: writtenName,
+				// The REQUESTED name (the raw multipart filename), not the
+				// renamed writtenName. Progress events fire mid-transfer, while
+				// the uploader's card still carries the requested name — the
+				// client matches them with (relPath || name) === data.name, and
+				// relPath/name are exactly the multipart filename sent. Using
+				// writtenName here (root-relative, and renamed on collision)
+				// would mismatch for any upload into a subdirectory or any
+				// collision rename, dropping the authoritative WS progress
+				// signal. The renamed name reaches the client at completion via
+				// writtenName in the response / file_uploaded below.
+				name: filename,
 			}, r.ContentLength)
 			f.Close()
 			if err != nil {

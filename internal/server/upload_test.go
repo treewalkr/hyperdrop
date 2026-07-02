@@ -1156,3 +1156,92 @@ drain:
 		t.Errorf("broadcast file.name: got %v, want a (1).txt", uploaded["file"])
 	}
 }
+
+// TestUpload_NameCollision_ProgressUsesRequestedName pins the fix for a
+// regression where the upload_progress event's name was switched to the renamed
+// writtenName: that broke the client's card matcher (relPath||name === data.name)
+// for any upload into a subdirectory and for collision renames, since the card
+// still carries the REQUESTED name mid-transfer. Progress must carry the
+// requested name; the renamed name reaches the client only at completion (via
+// the response / file_uploaded). Here a collision upload must emit progress
+// events named "a.txt" — not "a (1).txt" — while the response still reports the
+// renamed name.
+func TestUpload_NameCollision_ProgressUsesRequestedName(t *testing.T) {
+	const contentSize = 1 << 20 // >64KB so at least one mid-upload progress emit fires
+
+	root := t.TempDir()
+	// Pre-existing file — forces a rename to "a (1).txt".
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("original"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := cli.Config{RootDir: root, Token: "secret123"}
+	r, hub := newRouterWithHub(cfg)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	sub := hub.subscribe()
+	defer hub.unsubscribe(sub)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, _ := writer.CreateFormFile("file", "a.txt")
+	part.Write(bytes.Repeat([]byte("x"), contentSize))
+	writer.Close()
+
+	req, _ := http.NewRequest("POST", ts.URL+"/api/upload?token=secret123", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status: got %d, want 200. body: %s", resp.StatusCode, b)
+	}
+
+	// Drain progress + completion events queued synchronously by the handler.
+	var progress []map[string]any
+	var renamed string
+drain:
+	for {
+		select {
+		case raw := <-sub.out:
+			var ev map[string]any
+			if err := json.Unmarshal(raw, &ev); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			switch ev["type"] {
+			case "upload_progress":
+				progress = append(progress, ev)
+			case "file_uploaded":
+				f, _ := ev["file"].(map[string]any)
+				renamed, _ = f["name"].(string)
+			}
+		default:
+			break drain
+		}
+	}
+
+	if len(progress) == 0 {
+		t.Fatal("no upload_progress events emitted")
+	}
+	for _, ev := range progress {
+		if name, _ := ev["name"].(string); name != "a.txt" {
+			t.Errorf("progress event name: got %q, want %q (the requested name, not the renamed one)", name, "a.txt")
+		}
+	}
+	// The renamed name still reaches completion signals.
+	if renamed != "a (1).txt" {
+		t.Errorf("file_uploaded name: got %q, want %q", renamed, "a (1).txt")
+	}
+	var result struct {
+		Files []struct {
+			Name string `json:"name"`
+		} `json:"files"`
+	}
+	json.NewDecoder(resp.Body).Decode(&result)
+	if len(result.Files) != 1 || result.Files[0].Name != "a (1).txt" {
+		t.Errorf("response name: got %+v, want a (1).txt", result.Files)
+	}
+}
