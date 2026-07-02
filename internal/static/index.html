@@ -342,7 +342,15 @@
       stroke: var(--accent);
     }
 
-    .nebula-dropzone .label { color: var(--text-muted); font-size: 0.9rem; }
+    /* Constrain + center so the label never spills past the circle's curve,
+       even when it wraps on the small (200px) mobile dropzone. */
+    .nebula-dropzone .label {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      max-width: 78%;
+      text-align: center;
+      line-height: 1.3;
+    }
     .nebula-dropzone .browse {
       background: var(--gradient-accent);
       -webkit-background-clip: text;
@@ -419,7 +427,8 @@
       min-width: 0;
     }
 
-    .file-card .file-name {
+    .file-card .file-name,
+    .folder-head .file-name {
       font-size: 0.88rem;
       font-weight: 500;
       white-space: nowrap;
@@ -428,7 +437,8 @@
       min-width: 0;
     }
 
-    .file-card .file-meta {
+    .file-card .file-meta,
+    .folder-head .file-meta {
       display: flex;
       align-items: center;
       gap: 0.6rem;
@@ -446,7 +456,8 @@
     .file-meta .error-label { color: var(--danger); font-weight: 500; }
     .file-meta .paused-label { color: var(--warning); font-weight: 500; }
 
-    .file-card .progress-bar {
+    .file-card .progress-bar,
+    .folder-head .progress-bar {
       width: 100%;
       height: 4px;
       background: rgba(255,255,255,0.06);
@@ -455,7 +466,8 @@
       overflow: hidden;
     }
 
-    .file-card .progress-bar .fill {
+    .file-card .progress-bar .fill,
+    .folder-head .progress-bar .fill {
       height: 100%;
       border-radius: 4px;
       width: 0%;
@@ -518,6 +530,45 @@
       background: rgba(255,107,107,0.1);
     }
     .act-btn svg { width: 16px; height: 16px; }
+
+    .folder-card {
+      border: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+      border-radius: 14px;
+      background: var(--glass, rgba(255,255,255,0.04));
+      margin-bottom: 0.75rem;
+      overflow: hidden;
+    }
+    .folder-head {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.85rem 1rem;
+      cursor: pointer;
+      user-select: none;
+    }
+    .folder-chevron { width: 18px; height: 18px; color: var(--text-muted); transition: transform 0.15s ease; transform: rotate(0deg); flex-shrink: 0; }
+    .folder-chevron svg { width: 18px; height: 18px; }
+    .folder-chevron.open { transform: rotate(90deg); }
+    .folder-icon { width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; border-radius: 10px; background: rgba(124,108,240,0.18); color: #7c6cf0; flex-shrink: 0; }
+    .folder-icon svg { width: 20px; height: 20px; }
+    .folder-head .file-info { flex: 1; min-width: 0; }
+    .folder-head .actions { opacity: 0.6; }
+    .folder-head:hover .actions { opacity: 1; }
+
+    .folder-children { padding: 0 0.5rem 0.5rem 2.6rem; display: flex; flex-direction: column; gap: 0.4rem; }
+    .file-card.child {
+      background: transparent;
+      border: none;
+      padding: 0.4rem 0.5rem;
+      margin-bottom: 0;
+      box-shadow: none;
+    }
+    .file-card.child .file-icon { width: 30px; height: 30px; font-size: 0.65rem; }
+    .file-card.child .file-name { font-size: 0.85rem; }
+    .progress-bar.slim { height: 4px; }
+
+    @media (max-width: 640px) { .folder-head .actions { opacity: 1; } }
+
 
     /* ========================================
        TOAST — GLASS SLIDE-IN
@@ -724,16 +775,94 @@
       <div class="ring"></div>
       <div class="inner">
         <svg fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
-        <span class="label">Drag here or <span class="browse">browse</span></span>
+        <span class="label">Drag items here, or <span class="browse">browse</span></span>
       </div>
     </div>
 
     <div class="file-list">
-      <template x-if="files.length === 0">
+      <template x-if="files.length === 0 && folders.length === 0">
         <div class="empty-hint">Files you drop will appear here</div>
       </template>
 
-      <template x-for="f in files" :key="f.id">
+      <!-- Directory uploads: one aggregate card per folder, expandable to its files -->
+      <template x-for="fld in folders" :key="fld.id">
+        <div class="folder-card" data-testid="folder-item" :class="'state-' + folderStatus(fld)">
+          <div class="folder-head" @click="fld.expanded = !fld.expanded" role="button" tabindex="0"
+               @keydown.enter.prevent="fld.expanded = !fld.expanded">
+            <div class="folder-chevron" :class="{ open: fld.expanded }" data-testid="folder-chevron">
+              <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+            </div>
+            <div class="folder-icon">
+              <svg fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M4 20a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2Z"/></svg>
+            </div>
+            <div class="file-info">
+              <div class="file-name" data-testid="folder-name" :title="fld.name" x-text="fld.name"></div>
+              <div class="file-meta">
+                <span x-text="folderProgress(fld).count + ' files · ' + formatSize(folderProgress(fld).total)"></span>
+                <template x-if="folderStatus(fld) === 'uploading'">
+                  <span>· <span x-text="folderProgress(fld).doneCount + '/' + folderProgress(fld).count + ' done · ' + Math.round(folderProgress(fld).pct) + '%'"></span></span>
+                </template>
+                <template x-if="folderStatus(fld) === 'error'">
+                  <span>· <span class="error-label">Some files failed</span></span>
+                </template>
+                <template x-if="folderStatus(fld) === 'done'">
+                  <span>· <span class="done-label">Complete</span></span>
+                </template>
+              </div>
+              <div class="progress-bar">
+                <div class="fill"
+                     :class="folderStatus(fld) === 'done' ? 'done' : folderStatus(fld) === 'error' ? 'error' : ''"
+                     :style="'width:' + folderProgress(fld).pct + '%'"></div>
+              </div>
+            </div>
+            <div class="actions" @click.stop>
+              <template x-if="folderStatus(fld) === 'done'">
+                <button class="act-btn danger" @click.stop="dismissFolder(fld.id)" title="Dismiss" aria-label="Dismiss folder">
+                  <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+              </template>
+              <template x-if="folderStatus(fld) !== 'done'">
+                <button class="act-btn danger" @click.stop="cancelFolder(fld.id)" title="Cancel folder" aria-label="Cancel folder upload">
+                  <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+              </template>
+            </div>
+          </div>
+
+          <template x-if="fld.expanded">
+            <div class="folder-children" data-testid="folder-children">
+              <template x-for="f in filesIn(fld.id)" :key="f.id">
+                <div class="file-card child" data-testid="file-item" :class="{ 'state-error': f.status === 'error' }">
+                  <div class="file-icon" :class="f.category" x-text="f.ext || '?'"></div>
+                  <div class="file-info">
+                    <div class="file-name" data-testid="file-name" :title="f.relPath || f.name" x-text="f.name"></div>
+                    <div class="file-meta">
+                      <span x-text="formatSize(f.size)"></span>
+                      <template x-if="f.status === 'uploading'">
+                        <span>· <span x-text="Math.round(f.progress) + '%'"></span></span>
+                      </template>
+                      <template x-if="f.status === 'error'">
+                        <span>· <span class="error-label">Failed</span></span>
+                      </template>
+                      <template x-if="f.status === 'done'">
+                        <span>· <span class="done-label">Done</span></span>
+                      </template>
+                    </div>
+                    <div class="progress-bar slim">
+                      <div class="fill"
+                           :class="f.status === 'done' ? 'done' : f.status === 'error' ? 'error' : ''"
+                           :style="'width:' + f.progress + '%'"></div>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+      </template>
+
+      <!-- Loose files (folderId === null): unchanged flat card UX -->
+      <template x-for="f in looseFiles()" :key="f.id">
         <div class="file-card" data-testid="file-item" :class="{ 'state-error': f.status === 'error' }">
           <div class="file-icon" :class="f.category" x-text="f.ext || '?'"></div>
           <div class="file-info">
@@ -844,7 +973,9 @@
 
       return {
         files: [],
+        folders: [],           // directory-upload group cards: { id, name, expanded }
         nextId: 0,
+        nextFolderId: 0,
         dragging: false,
         dragCount: 0,
         dzOver: false,
@@ -859,6 +990,11 @@
         _confirmResolve: null,
         ws: null,                  // live WebSocket for server-reported progress
         wsReconnectDelay: 500,     // backoff seed, doubled per failed reconnect
+        // Folder uploads are queued with a small concurrency cap so dropping a
+        // thousand-file folder doesn't fire a thousand parallel POSTs.
+        _folderPending: [],
+        _folderActive: 0,
+        FOLDER_CONCURRENCY: 4,
 
         init() {
           // NOTE: Alpine v3 auto-invokes a component's init() method, so the
@@ -925,7 +1061,13 @@
         // total is only a hint. Completion is driven by onUploadComplete
         // (file_uploaded), so this only advances the bar mid-transfer.
         onUploadProgress(data) {
-          const f = this.files.find((x) => x.name === data.name && x.status === 'uploading');
+          // Match on the full relative path when present (folder uploads) so two
+          // files sharing a basename in different subfolders don't collide. The
+          // server reports name = the full multipart filename (relPath).
+          const f = this.files.find((x) => {
+            if (x.status !== 'uploading') return false;
+            return (x.relPath || x.name) === data.name;
+          });
           if (!f || !f.size) return;
           if (data.bytesWritten > 0) {
             // Monotonic: only ever move the bar forward. Out-of-order or
@@ -1043,22 +1185,32 @@
         },
 
         // ---- intake ----
+        // Build one upload entry. relPath is the '/'-separated path INCLUDING
+        // the top folder (e.g. "vacation/sub/a.txt"); it becomes the multipart
+        // filename so the server nests the file under currentPath. folderId ties
+        // the entry to its aggregate folder card (null for loose files).
+        makeEntry(file, relPath, folderId) {
+          const ext = this.extOf(file.name);
+          return {
+            id: ++this.nextId,
+            file,
+            name: file.name,
+            relPath: relPath || '',
+            folderId: folderId || null,
+            size: file.size,
+            ext,
+            category: this.categoryOf(ext),
+            progress: 0,
+            status: 'uploading',
+            speed: 0,
+            xhr: null,
+            startedAt: Date.now(),
+          };
+        },
+
         addFiles(list) {
           for (const file of list) {
-            const ext = this.extOf(file.name);
-            const entry = {
-              id: ++this.nextId,
-              file,
-              name: file.name,
-              size: file.size,
-              ext,
-              category: this.categoryOf(ext),
-              progress: 0,
-              status: 'uploading',
-              speed: 0,
-              xhr: null,
-              startedAt: Date.now(),
-            };
+            const entry = this.makeEntry(file, '', null);
             this.files.push(entry);
             this.upload(entry);
           }
@@ -1066,15 +1218,112 @@
           this.toast(n + ' file' + (n > 1 ? 's' : '') + ' added', 'info');
         },
 
+        // Ingest a collected folder as [{file, rel}] — rel is the '/'-separated
+        // path INCLUDING the top folder ("vacation/sub/a.txt"). Creates one
+        // aggregate folder card and queues uploads (concurrency-capped).
+        // Drag-and-drop walks its dropped directory into this same shape; tests
+        // call it directly since a headless browser can't synthesize a folder drag.
+        intakeFolderEntries(items, folderName) {
+          if (!items || !items.length) return;
+          const folderId = 'f' + (++this.nextFolderId);
+          const name = folderName || (items[0].rel ? items[0].rel.split('/')[0] : 'Folder');
+          const entries = items.map((it) => this.makeEntry(it.file, it.rel || it.file.name, folderId));
+          this.folders.push({ id: folderId, name, expanded: true });
+          for (const e of entries) this.files.push(e);
+          for (const e of entries) this.enqueueFolderUpload(e);
+          this.toast(name + ' · ' + entries.length + ' files queued', 'info');
+        },
+
         onFilePick(e) {
           if (e.target.files && e.target.files.length) this.addFiles(e.target.files);
           e.target.value = '';
         },
 
+        // Drag-and-drop: a dropped directory is walked via webkitGetAsEntry into
+        // [{file, rel}] and funneled through intakeFolderEntries (shared with the
+        // programmatic path). Plain files, or browsers without the entries API,
+        // fall back to flat addFiles. The dropzone's "browse" click is files-only
+        // (a single native dialog can't pick files-or-folder), so folders arrive
+        // exclusively through drag-and-drop.
+        async addDroppedItems(dataTransfer) {
+          const items = dataTransfer.items;
+          if (!items || !items.length || !items[0].webkitGetAsEntry) {
+            this.addFiles(dataTransfer.files);
+            return;
+          }
+          // Snapshot entries synchronously: the DataTransferItemList is
+          // invalidated once the drop handler returns.
+          const top = [];
+          for (let i = 0; i < items.length; i++) {
+            const entry = items[i].webkitGetAsEntry && items[i].webkitGetAsEntry();
+            if (entry) top.push(entry);
+          }
+          if (!top.some((e) => e.isDirectory)) { this.addFiles(dataTransfer.files); return; }
+
+          const collected = [];
+          let folderName = '';
+          const walk = (entry, rel) => new Promise((resolve) => {
+            if (entry.isFile) {
+              entry.file(
+                (file) => {
+                  if (!folderName && rel) folderName = rel.split('/')[0];
+                  collected.push({ file, rel: rel || file.name });
+                  resolve();
+                },
+                () => resolve(),
+              );
+            } else if (entry.isDirectory) {
+              const reader = entry.createReader();
+              const readBatch = () => new Promise((res) => reader.readEntries(res, () => res([])));
+              // readEntries returns at most ~100 entries per call; loop until empty.
+              (async () => {
+                let batch;
+                do {
+                  batch = await readBatch();
+                  for (const child of batch) {
+                    await walk(child, rel ? (rel + '/' + child.name) : child.name);
+                  }
+                } while (batch && batch.length);
+                resolve();
+              })();
+            } else {
+              resolve();
+            }
+          });
+          try {
+            for (const entry of top) await walk(entry, entry.name);
+          } catch (err) {
+            this.toast('folder scan failed', 'error');
+            return;
+          }
+          if (collected.length) this.intakeFolderEntries(collected, folderName);
+        },
+
+        // ---- folder upload queue (concurrency cap) ----
+        enqueueFolderUpload(entry) {
+          this._folderPending.push(entry);
+          this.pumpFolderUploads();
+        },
+
+        pumpFolderUploads() {
+          while (this._folderActive < this.FOLDER_CONCURRENCY && this._folderPending.length) {
+            const entry = this._folderPending.shift();
+            this._folderActive++;
+            this.upload(entry, () => {
+              this._folderActive--;
+              this.pumpFolderUploads();
+            });
+          }
+        },
+
         // ---- upload (real backend, XHR for progress + cancel) ----
-        upload(entry) {
+        // onDone fires once the request settles (success/error/abort) so the
+        // folder queue can release its slot and pump the next file.
+        upload(entry, onDone) {
           const fd = new FormData();
-          fd.append('file', entry.file, entry.file.name);
+          // The third arg is the multipart filename. For folder entries it is
+          // the full relative path, which the server nests under currentPath.
+          fd.append('file', entry.file, entry.relPath || entry.file.name);
 
           const xhr = new XMLHttpRequest();
           entry.xhr = xhr;
@@ -1094,6 +1343,7 @@
           };
           xhr.onload = () => {
             entry.xhr = null;
+            if (onDone) onDone();
             if (xhr.status >= 200 && xhr.status < 300) {
               // Fallback completion path: finalizeUpload is shared with the
               // authoritative file_uploaded handler over the WS. Whichever
@@ -1108,10 +1358,11 @@
           };
           xhr.onerror = () => {
             entry.xhr = null;
+            if (onDone) onDone();
             entry.status = 'error';
             this.toast(entry.name + ' failed', 'error');
           };
-          xhr.onabort = () => { entry.xhr = null; };
+          xhr.onabort = () => { entry.xhr = null; if (onDone) onDone(); };
 
           // location.search carries ?token= + ?path= on first load; the auth
           // cookie covers later calls and qs pins the target subdirectory.
@@ -1207,20 +1458,76 @@
           window.prompt('Copy link:', link);
         },
 
+        // ---- folder grouping & aggregate progress ----
+        looseFiles() {
+          return this.files.filter((f) => !f.folderId);
+        },
+
+        filesIn(folderId) {
+          return this.files.filter((f) => f.folderId === folderId);
+        },
+
+        // Byte-weighted aggregate progress for a folder card. Weighting by size
+        // (not file count) means a 500MB video moves the bar more than a 2KB
+        // text file, matching what users expect to see climb.
+        folderProgress(fld) {
+          const kids = this.filesIn(fld.id);
+          let total = 0, done = 0, doneCount = 0;
+          for (const f of kids) {
+            total += f.size;
+            done += f.size * Math.min(100, f.progress) / 100;
+            if (f.status === 'done') doneCount++;
+          }
+          const pct = total ? Math.round((done / total) * 100) : 0;
+          return { pct, total, count: kids.length, doneCount };
+        },
+
+        // Derived folder status from its children's states.
+        folderStatus(fld) {
+          const kids = this.filesIn(fld.id);
+          if (!kids.length) return 'done';
+          if (kids.some((f) => f.status === 'uploading')) return 'uploading';
+          if (kids.every((f) => f.status === 'done')) return 'done';
+          return 'error'; // any non-done child that isn't uploading is an error
+        },
+
+        async cancelFolder(folderId) {
+          const fld = this.folders.find((f) => f.id === folderId);
+          if (!fld) return;
+          const ok = await this.confirm(
+            'Cancel folder upload?',
+            'Cancel upload of <span class="fname">' + this.escape(fld.name) + '</span>? ' +
+              'Files already uploaded will remain on the server.'
+          );
+          if (!ok) return;
+          // Abort in-flight children and drop the pending queue entries; the
+          // settle callbacks will pump the queue, but removed entries are gone.
+          const kids = this.filesIn(folderId);
+          for (const f of kids) {
+            if (f.xhr) { try { f.xhr.abort(); } catch (e) {} }
+          }
+          this._folderPending = this._folderPending.filter((e) => e.folderId !== folderId);
+          this.files = this.files.filter((f) => f.folderId !== folderId);
+          this.folders = this.folders.filter((f) => f.id !== folderId);
+          this.toast(fld.name + ' cancelled', 'info');
+        },
+
+        // Remove a finished folder card and its (completed) child rows.
+        dismissFolder(folderId) {
+          this.files = this.files.filter((f) => f.folderId !== folderId);
+          this.folders = this.folders.filter((f) => f.id !== folderId);
+        },
+
         // ---- drag & drop ----
         dragEnter() { this.dragCount++; this.dragging = true; },
         dragLeave() { this.dragCount--; if (this.dragCount <= 0) { this.dragCount = 0; this.dragging = false; } },
         bodyDrop(e) {
           this.dragCount = 0; this.dragging = false; this.dzOver = false;
-          if (e && e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
-            this.addFiles(e.dataTransfer.files);
-          }
+          if (e && e.dataTransfer) this.addDroppedItems(e.dataTransfer);
         },
         dropFiles(e) {
           this.dzOver = false;
-          if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
-            this.addFiles(e.dataTransfer.files);
-          }
+          if (e.dataTransfer) this.addDroppedItems(e.dataTransfer);
         },
 
         // ---- toast ----

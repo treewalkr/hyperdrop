@@ -560,3 +560,179 @@ func TestUpload_NoAuth_Returns401(t *testing.T) {
 		t.Errorf("status: got %d, want 401", resp.StatusCode)
 	}
 }
+
+// TestUpload_NestedFilename_CreatesDirs covers directory uploads (issue #30):
+// a part whose filename carries a relative path ("a/b/c.txt") must land at the
+// nested location and auto-create the intermediate directories.
+func TestUpload_NestedFilename_CreatesDirs(t *testing.T) {
+	root := t.TempDir()
+	cfg := cli.Config{RootDir: root, Token: "secret123"}
+	r := NewRouter(cfg)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("file", "vacation/sub/sunset.jpg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	part.Write([]byte("pic"))
+	writer.Close()
+
+	req, _ := http.NewRequest("POST", ts.URL+"/api/upload?token=secret123", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status: got %d, want 200. body: %s", resp.StatusCode, b)
+	}
+
+	saved, err := os.ReadFile(filepath.Join(root, "vacation", "sub", "sunset.jpg"))
+	if err != nil {
+		t.Fatalf("nested file not saved: %v", err)
+	}
+	if string(saved) != "pic" {
+		t.Errorf("content: got %q, want %q", string(saved), "pic")
+	}
+	// Intermediate directories must have been created.
+	for _, seg := range []string{"vacation", filepath.Join("vacation", "sub")} {
+		if info, err := os.Stat(filepath.Join(root, seg)); err != nil || !info.IsDir() {
+			t.Errorf("intermediate dir %q not created: %v", seg, err)
+		}
+	}
+	// Nested upload under an existing ?path= base combines both segments.
+	// (currentPath is always an existing dir in the UI; the frontend only
+	// navigates into loaded folders, so the base exists before upload.)
+	t.Run("with path base", func(t *testing.T) {
+		root := t.TempDir()
+		os.MkdirAll(filepath.Join(root, "gallery"), 0o755)
+		cfg := cli.Config{RootDir: root, Token: "secret123"}
+		r := NewRouter(cfg)
+		ts := httptest.NewServer(r)
+		defer ts.Close()
+
+		body := &bytes.Buffer{}
+		writer := multipart.NewWriter(body)
+		part, _ := writer.CreateFormFile("file", "inner/deep.txt")
+		part.Write([]byte("x"))
+		writer.Close()
+
+		req, _ := http.NewRequest("POST", ts.URL+"/api/upload?path=gallery&token=secret123", body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			b, _ := io.ReadAll(resp.Body)
+			t.Fatalf("status: got %d, want 200. body: %s", resp.StatusCode, b)
+		}
+		if _, err := os.ReadFile(filepath.Join(root, "gallery", "inner", "deep.txt")); err != nil {
+			t.Fatalf("nested-under-base file not saved: %v", err)
+		}
+	})
+}
+
+// TestUpload_NestedFilename_TraversalRejected ensures a relative path in the
+// filename still cannot escape the root: SanitizePath must reject "../".
+func TestUpload_NestedFilename_TraversalRejected(t *testing.T) {
+	root := t.TempDir()
+	cfg := cli.Config{RootDir: root, Token: "secret123"}
+	r := NewRouter(cfg)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	for _, filename := range []string{"../evil.txt", "sub/../../evil.txt", "ok/../../../evil.txt"} {
+		t.Run(filename, func(t *testing.T) {
+			body := &bytes.Buffer{}
+			writer := multipart.NewWriter(body)
+			part, _ := writer.CreateFormFile("file", filename)
+			part.Write([]byte("pwned"))
+			writer.Close()
+
+			req, _ := http.NewRequest("POST", ts.URL+"/api/upload?token=secret123", body)
+			req.Header.Set("Content-Type", writer.FormDataContentType())
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusBadRequest {
+				b, _ := io.ReadAll(resp.Body)
+				t.Errorf("status: got %d, want 400. body: %s", resp.StatusCode, b)
+			}
+		})
+	}
+
+	// And nothing escaped the root on disk.
+	if _, err := os.Stat(filepath.Join(root, "evil.txt")); !os.IsNotExist(err) {
+		t.Errorf("file escaped root: %v", err)
+	}
+}
+
+// TestUpload_NestedFilename_BroadcastNormalized verifies the file_uploaded
+// event for a nested upload carries name=basename and path=the file's actual
+// directory, so the Files-page live update places the row in the right view.
+func TestUpload_NestedFilename_BroadcastNormalized(t *testing.T) {
+	root := t.TempDir()
+	cfg := cli.Config{RootDir: root, Token: "secret123"}
+	r, hub := newRouterWithHub(cfg)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	sub := hub.subscribe()
+	defer hub.unsubscribe(sub)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, _ := writer.CreateFormFile("file", "vacation/sub/sunset.jpg")
+	part.Write([]byte("pic"))
+	writer.Close()
+
+	req, _ := http.NewRequest("POST", ts.URL+"/api/upload?token=secret123", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status: got %d, want 200. body: %s", resp.StatusCode, b)
+	}
+
+	var uploaded map[string]any
+drain:
+	for {
+		select {
+		case raw := <-sub.out:
+			var ev map[string]any
+			if err := json.Unmarshal(raw, &ev); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			if ev["type"] == "file_uploaded" {
+				uploaded = ev
+				break drain
+			}
+		default:
+			break drain
+		}
+	}
+	if uploaded == nil {
+		t.Fatal("no file_uploaded event")
+	}
+	if got := uploaded["path"]; got != "vacation/sub" {
+		t.Errorf("event path: got %v, want vacation/sub", got)
+	}
+	file, _ := uploaded["file"].(map[string]any)
+	if file == nil || file["name"] != "sunset.jpg" {
+		t.Errorf("event file.name: got %v, want sunset.jpg", uploaded["file"])
+	}
+}
