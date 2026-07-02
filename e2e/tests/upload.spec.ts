@@ -1,9 +1,9 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test, expect } from '@playwright/test';
 import { wipeUploads } from '../fixtures/isolation.js';
-import { TOKEN } from '../lib/config.mjs';
+import { TOKEN, UPLOAD_DIR } from '../lib/config.mjs';
 
 // The token comes from lib/config.mjs — the single source shared with the
 // launch script and playwright.config.ts. The first page request sets the
@@ -127,4 +127,92 @@ for (const [label, size] of progressCases) {
     await expect(page.locator('[data-testid="toasts"] .toast.success', { hasText: name })).toHaveCount(1);
   });
 }
+
+// =============================================================================
+// Directory upload (issue #30). A folder is uploaded whole and its nested
+// structure is preserved on the server.
+//
+// The native folder picker (webkitdirectory) and the drag-drop entry traversal
+// can't be driven faithfully from a headless browser, so these specs exercise
+// the real intake code path by handing the Alpine component synthetic File
+// objects that carry webkitRelativePath — exactly the shape the picker/drop
+// handlers produce. This still runs the real FormData/XHR upload, the real
+// backend (MkdirAll + nesting + sandbox), and the real Files-page render.
+// =============================================================================
+
+// Builds File objects in-page with a webkitRelativePath (a read-only prop the
+// browser normally sets for directory inputs) and feeds them to the Send page's
+// folder intake. Returns nothing; assertions happen on the rendered DOM.
+async function uploadFolderViaComponent(
+  page: import('@playwright/test').Page,
+  topFolder: string,
+  files: Array<{ rel: string; body: string }>,
+): Promise<void> {
+  await page.evaluate(
+    ({ topFolder, files }) => {
+      const comp = (window as any).Alpine.$data(document.body);
+      const built = files.map((f) => {
+        const file = new File([f.body], f.rel.split('/').pop()!, { type: 'text/plain' });
+        Object.defineProperty(file, 'webkitRelativePath', {
+          value: `${topFolder}/${f.rel}`,
+          configurable: true,
+        });
+        return file;
+      });
+      comp.addFolderFiles(built);
+    },
+    { topFolder, files },
+  );
+}
+
+test('a folder upload shows one aggregate card and nests files on the Files page', async ({ page }) => {
+  await page.goto(`/?token=${TOKEN}`);
+
+  await uploadFolderViaComponent(page, 'vacation', [
+    { rel: 'postcard.txt', body: 'wish you were here' },
+    { rel: 'photos/sunset.jpg', body: 'jpeg-bytes' },
+    { rel: 'photos/raw/keep.dng', body: 'raw-bytes' },
+  ]);
+
+  // Exactly one aggregate folder card (not three flat file rows).
+  await expect(page.getByTestId('folder-item')).toHaveCount(1);
+  await expect(page.getByTestId('folder-name')).toHaveText('vacation');
+
+  // The aggregate card reaches done; its child rows render underneath.
+  await expect(page.locator('[data-testid="folder-item"].state-done')).toBeVisible({ timeout: 5000 });
+  await expect(page.getByTestId('folder-children').getByTestId('file-item')).toHaveCount(3);
+
+  // Files landed nested on disk.
+  expect(readFileSync(path.join(UPLOAD_DIR, 'vacation', 'postcard.txt'), 'utf8')).toBe('wish you were here');
+  expect(readFileSync(path.join(UPLOAD_DIR, 'vacation', 'photos', 'sunset.jpg'), 'utf8')).toBe('jpeg-bytes');
+  expect(readFileSync(path.join(UPLOAD_DIR, 'vacation', 'photos', 'raw', 'keep.dng'), 'utf8')).toBe('raw-bytes');
+
+  // The Files page shows the top folder as a directory and nests underneath.
+  await page.getByTestId('nav-files').click();
+  await expect(page).toHaveURL(/\/files/);
+
+  // vacation appears as a directory row; click into it and descend the tree.
+  const folderRow = (name: string) =>
+    page.locator('[data-testid="file-name"].is-folder', { hasText: name }).first();
+
+  await folderRow('vacation').click();
+  await expect(folderRow('photos')).toBeVisible();
+  await folderRow('photos').click();
+  await expect(page.locator('[data-testid="file-name"]', { hasText: 'sunset.jpg' })).toBeVisible();
+});
+
+test('a folder upload whose relative path escapes the root is rejected by the server', async ({ page }) => {
+  await page.goto(`/?token=${TOKEN}`);
+
+  // '../../escape.txt' under the top folder cleans to a path above the upload
+  // root, which SanitizePath rejects (400). The UI surfaces it as an error.
+  await uploadFolderViaComponent(page, 'evil', [
+    { rel: '../../escape.txt', body: 'pwned' },
+  ]);
+
+  await expect(page.locator('[data-testid="folder-item"].state-error')).toBeVisible({ timeout: 5000 });
+  // Nothing was written: the rejected part never reaches os.Create.
+  expect(readdirSync(UPLOAD_DIR).length).toBe(0);
+});
+
 

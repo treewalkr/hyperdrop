@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -199,14 +200,44 @@ func uploadHandler(cfg cli.Config, hub *Hub) http.HandlerFunc {
 				return
 			}
 
+			// Directory uploads arrive as a single part whose filename carries
+			// the relative path (e.g. "vacation/sub/a.txt"). SanitizePath already
+			// resolved that to a safe nested dest; create any missing ancestor
+			// directories so os.Create succeeds for nested files. No-op for a
+			// flat filename (filepath.Dir == ".").
+			if dir := filepath.Dir(dest); dir != "" && dir != "." {
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+					return
+				}
+			}
+
 			f, err := os.Create(dest)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 				return
 			}
 
+			// Split the (possibly nested) filename in a slash-aware way for the
+			// progress and completion events. The wire format is always forward
+			// slashes (webkitRelativePath / DataTransfer), so the path package is
+			// correct regardless of the server's OS.
+			baseName := path.Base(filename)
+			evPath := relDir
+			if fileDir := path.Dir(filename); fileDir != "" && fileDir != "." {
+				if evPath == "" {
+					evPath = fileDir
+				} else {
+					evPath = evPath + "/" + fileDir
+				}
+			}
+
 			n, err := copyProgressed(f, part, hub, uploadProgressEvent{
-				path: relDir,
+				path: evPath,
+				// Full relative filename (e.g. "vacation/sub/a.txt") so the
+				// uploader can match progress to the exact entry even when two
+				// files in different subfolders share a basename. The terminal
+				// file_uploaded below uses the basename for display.
 				name: filename,
 			}, r.ContentLength)
 			f.Close()
@@ -219,11 +250,11 @@ func uploadHandler(cfg cli.Config, hub *Hub) http.HandlerFunc {
 			saved = append(saved, uploadResult{Name: filename, Size: n})
 			hub.broadcast(map[string]any{
 				"type": "file_uploaded",
-				"path": relDir,
+				"path": evPath,
 				"file": map[string]any{
-					"name":     filename,
+					"name":     baseName,
 					"size":     n,
-					"category": categorize(filename),
+					"category": categorize(baseName),
 				},
 			})
 		}
