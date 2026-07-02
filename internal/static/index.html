@@ -342,7 +342,15 @@
       stroke: var(--accent);
     }
 
-    .nebula-dropzone .label { color: var(--text-muted); font-size: 0.9rem; }
+    /* Constrain + center so the label never spills past the circle's curve,
+       even when it wraps on the small (200px) mobile dropzone. */
+    .nebula-dropzone .label {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      max-width: 78%;
+      text-align: center;
+      line-height: 1.3;
+    }
     .nebula-dropzone .browse {
       background: var(--gradient-accent);
       -webkit-background-clip: text;
