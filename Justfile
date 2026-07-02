@@ -10,8 +10,9 @@ ldflags := "-s -w -X {{version_pkg}}.Version=dev -X {{version_pkg}}.Commit={{git
 fmt:
 	gofmt -w ./cmd ./internal
 
+# Fail if any Go file is not gofmt-formatted.
 fmt-check:
-	test -z "$$(gofmt -l ./cmd ./internal)"
+	@! gofmt -l ./cmd ./internal | grep .
 
 vet:
 	go vet {{packages}}
