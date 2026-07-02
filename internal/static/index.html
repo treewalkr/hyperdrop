@@ -523,34 +523,6 @@
     }
     .act-btn svg { width: 16px; height: 16px; }
 
-    /* Folder-pick icon button tucked into the dropzone corner (issue #30) */
-    .nebula-dropzone .folder-pick {
-      position: absolute;
-      right: 0.9rem;
-      bottom: 0.7rem;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 30px;
-      height: 30px;
-      padding: 0;
-      border: none;
-      border-radius: 8px;
-      background: transparent;
-      color: var(--text-muted);
-      cursor: pointer;
-      opacity: 0.55;
-      transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
-    }
-    .nebula-dropzone .folder-pick svg { width: 18px; height: 18px; }
-    .nebula-dropzone .folder-pick:hover,
-    .nebula-dropzone .folder-pick:focus-visible {
-      opacity: 1;
-      color: var(--accent, #7c6cf0);
-      background: rgba(124,108,240,0.12);
-      outline: none;
-    }
-
     .folder-card {
       border: 1px solid var(--glass-border, rgba(255,255,255,0.08));
       border-radius: 14px;
@@ -572,7 +544,6 @@
     .folder-icon { width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; border-radius: 10px; background: rgba(124,108,240,0.18); color: #7c6cf0; flex-shrink: 0; }
     .folder-icon svg { width: 20px; height: 20px; }
     .folder-head .file-info { flex: 1; min-width: 0; }
-    .folder-badge { color: var(--text-muted); font-size: 0.8rem; padding: 0 0.4rem; }
     .folder-head .actions { opacity: 0.6; }
     .folder-head:hover .actions { opacity: 1; }
 
@@ -588,17 +559,7 @@
     .file-card.child .file-name { font-size: 0.85rem; }
     .progress-bar.slim { height: 4px; }
 
-    .scanning-label { color: var(--accent, #7c6cf0); }
     .cancelled-label { color: var(--text-muted); }
-    .folder-card.state-scanning .progress-bar .fill {
-      background: linear-gradient(90deg, rgba(124,108,240,0.3), rgba(78,205,196,0.3));
-      background-size: 200% 100%;
-      animation: folder-scan 1.2s ease-in-out infinite;
-    }
-    @keyframes folder-scan {
-      0% { background-position: 100% 0; }
-      100% { background-position: -100% 0; }
-    }
     @media (max-width: 640px) { .folder-head .actions { opacity: 1; } }
 
 
@@ -807,13 +768,8 @@
       <div class="ring"></div>
       <div class="inner">
         <svg fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
-        <span class="label">Drag here or <span class="browse">browse</span></span>
+        <span class="label">Drag items here, or <span class="browse">browse</span></span>
       </div>
-      <button class="folder-pick" data-testid="folder-pick" type="button"
-              @click.prevent.stop="$refs.folderInput.click()"
-              title="Pick a folder" aria-label="Pick a folder">
-        <svg fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M4 20a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2Z"/></svg>
-      </button>
     </div>
 
     <div class="file-list">
@@ -836,10 +792,7 @@
               <div class="file-name" data-testid="folder-name" :title="fld.name" x-text="fld.name"></div>
               <div class="file-meta">
                 <span x-text="folderProgress(fld).count + ' files · ' + formatSize(folderProgress(fld).total)"></span>
-                <template x-if="fld.scanning">
-                  <span>· <span class="scanning-label">Preparing…</span></span>
-                </template>
-                <template x-if="!fld.scanning && folderStatus(fld) === 'uploading'">
+                <template x-if="folderStatus(fld) === 'uploading'">
                   <span>· <span x-text="folderProgress(fld).doneCount + '/' + folderProgress(fld).count + ' done · ' + Math.round(folderProgress(fld).pct) + '%'"></span></span>
                 </template>
                 <template x-if="folderStatus(fld) === 'error'">
@@ -855,19 +808,16 @@
               <div class="progress-bar">
                 <div class="fill"
                      :class="folderStatus(fld) === 'done' ? 'done' : folderStatus(fld) === 'error' ? 'error' : folderStatus(fld) === 'cancelled' ? 'paused' : ''"
-                     :style="'width:' + (fld.scanning ? 100 : folderProgress(fld).pct) + '%'"></div>
+                     :style="'width:' + folderProgress(fld).pct + '%'"></div>
               </div>
             </div>
             <div class="actions" @click.stop>
-              <template x-if="fld.scanning">
-                <span class="folder-badge">…</span>
-              </template>
               <template x-if="folderStatus(fld) === 'done'">
                 <button class="act-btn danger" @click.stop="dismissFolder(fld.id)" title="Dismiss" aria-label="Dismiss folder">
                   <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                 </button>
               </template>
-              <template x-if="!fld.scanning && folderStatus(fld) !== 'done'">
+              <template x-if="folderStatus(fld) !== 'done'">
                 <button class="act-btn danger" @click.stop="cancelFolder(fld.id)" title="Cancel folder" aria-label="Cancel folder upload">
                   <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                 </button>
@@ -1009,7 +959,6 @@
 
   <!-- Hidden file input -->
   <input type="file" multiple data-testid="file-input" x-ref="fileInput" style="display:none" @change="onFilePick($event)" aria-hidden="true">
-  <input type="file" multiple webkitdirectory directory data-testid="folder-input" x-ref="folderInput" style="display:none" @change="onFolderPick($event)" aria-hidden="true">
 
   <script>
     function sendPage() {
@@ -1020,7 +969,7 @@
 
       return {
         files: [],
-        folders: [],           // directory-upload group cards: { id, name, expanded, scanning }
+        folders: [],           // directory-upload group cards: { id, name, expanded }
         nextId: 0,
         nextFolderId: 0,
         dragging: false,
@@ -1265,22 +1214,20 @@
           this.toast(n + ' file' + (n > 1 ? 's' : '') + ' added', 'info');
         },
 
-        // Folder picker (webkitdirectory): each File carries webkitRelativePath
-        // ("Top/sub/f.ext"). Group under one folder card named after the top
-        // segment, then queue uploads with a concurrency cap.
-        addFolderFiles(list) {
-          if (!list || !list.length) return;
+        // Ingest a collected folder as [{file, rel}] — rel is the '/'-separated
+        // path INCLUDING the top folder ("vacation/sub/a.txt"). Creates one
+        // aggregate folder card and queues uploads (concurrency-capped).
+        // Drag-and-drop walks its dropped directory into this same shape; tests
+        // call it directly since a headless browser can't synthesize a folder drag.
+        intakeFolderEntries(items, folderName) {
+          if (!items || !items.length) return;
           const folderId = 'f' + (++this.nextFolderId);
-          const entries = [];
-          for (const file of list) {
-            const rel = file.webkitRelativePath || file.name;
-            entries.push(this.makeEntry(file, rel, folderId));
-          }
-          const folderName = (entries[0].relPath.split('/')[0]) || 'Folder';
-          this.folders.push({ id: folderId, name: folderName, expanded: true, scanning: false });
+          const name = folderName || (items[0].rel ? items[0].rel.split('/')[0] : 'Folder');
+          const entries = items.map((it) => this.makeEntry(it.file, it.rel || it.file.name, folderId));
+          this.folders.push({ id: folderId, name, expanded: true });
           for (const e of entries) this.files.push(e);
           for (const e of entries) this.enqueueFolderUpload(e);
-          this.toast(folderName + ' · ' + entries.length + ' files queued', 'info');
+          this.toast(name + ' · ' + entries.length + ' files queued', 'info');
         },
 
         onFilePick(e) {
@@ -1288,14 +1235,12 @@
           e.target.value = '';
         },
 
-        onFolderPick(e) {
-          if (e.target.files && e.target.files.length) this.addFolderFiles(e.target.files);
-          e.target.value = '';
-        },
-
-        // Drag-and-drop of a folder: recursively walk the FileSystemEntry tree
-        // via webkitGetAsEntry, collecting {file, relPath}. Falls back to flat
-        // addFiles when the entries API is missing or only files were dropped.
+        // Drag-and-drop: a dropped directory is walked via webkitGetAsEntry into
+        // [{file, rel}] and funneled through intakeFolderEntries (shared with the
+        // programmatic path). Plain files, or browsers without the entries API,
+        // fall back to flat addFiles. The dropzone's "browse" click is files-only
+        // (a single native dialog can't pick files-or-folder), so folders arrive
+        // exclusively through drag-and-drop.
         async addDroppedItems(dataTransfer) {
           const items = dataTransfer.items;
           if (!items || !items.length || !items[0].webkitGetAsEntry) {
@@ -1309,20 +1254,16 @@
             const entry = items[i].webkitGetAsEntry && items[i].webkitGetAsEntry();
             if (entry) top.push(entry);
           }
-          const hasDir = top.some((e) => e.isDirectory);
-          if (!hasDir) { this.addFiles(dataTransfer.files); return; }
+          if (!top.some((e) => e.isDirectory)) { this.addFiles(dataTransfer.files); return; }
 
-          const folderId = 'f' + (++this.nextFolderId);
-          const folder = { id: folderId, name: 'Folder', expanded: true, scanning: true };
-          this.folders.push(folder);
-          const self = this;
           const collected = [];
+          let folderName = '';
           const walk = (entry, rel) => new Promise((resolve) => {
             if (entry.isFile) {
               entry.file(
                 (file) => {
-                  if (folder.name === 'Folder' && rel) folder.name = rel.split('/')[0];
-                  collected.push(self.makeEntry(file, rel || file.name, folderId));
+                  if (!folderName && rel) folderName = rel.split('/')[0];
+                  collected.push({ file, rel: rel || file.name });
                   resolve();
                 },
                 () => resolve(),
@@ -1330,7 +1271,7 @@
             } else if (entry.isDirectory) {
               const reader = entry.createReader();
               const readBatch = () => new Promise((res) => reader.readEntries(res, () => res([])));
-              // readEntries returns at most ~100 entries per call; loop empty.
+              // readEntries returns at most ~100 entries per call; loop until empty.
               (async () => {
                 let batch;
                 do {
@@ -1349,15 +1290,9 @@
             for (const entry of top) await walk(entry, entry.name);
           } catch (err) {
             this.toast('folder scan failed', 'error');
-          }
-          folder.scanning = false;
-          if (!collected.length) {
-            this.folders = this.folders.filter((f) => f.id !== folderId);
             return;
           }
-          for (const e of collected) this.files.push(e);
-          for (const e of collected) this.enqueueFolderUpload(e);
-          this.toast(folder.name + ' · ' + collected.length + ' files queued', 'info');
+          if (collected.length) this.intakeFolderEntries(collected, folderName);
         },
 
         // ---- folder upload queue (concurrency cap) ----
@@ -1545,7 +1480,6 @@
 
         // Derived folder status from its children's states.
         folderStatus(fld) {
-          if (fld.scanning) return 'scanning';
           const kids = this.filesIn(fld.id);
           if (!kids.length) return 'done';
           if (kids.some((f) => f.status === 'uploading')) return 'uploading';

@@ -140,9 +140,11 @@ for (const [label, size] of progressCases) {
 // backend (MkdirAll + nesting + sandbox), and the real Files-page render.
 // =============================================================================
 
-// Builds File objects in-page with a webkitRelativePath (a read-only prop the
-// browser normally sets for directory inputs) and feeds them to the Send page's
-// folder intake. Returns nothing; assertions happen on the rendered DOM.
+// Builds [{file, rel}] in-page and hands it to the Send page's folder intake —
+// the same `intakeFolderEntries` that drag-and-drop resolves a dropped directory
+// into. A headless browser can't synthesize a real folder drag (no
+// webkitGetAsEntry entries), so we drive the production intake directly. The rel
+// carries the full nested path; assertions happen on the rendered DOM and disk.
 async function uploadFolderViaComponent(
   page: import('@playwright/test').Page,
   topFolder: string,
@@ -151,15 +153,11 @@ async function uploadFolderViaComponent(
   await page.evaluate(
     ({ topFolder, files }) => {
       const comp = (window as any).Alpine.$data(document.body);
-      const built = files.map((f) => {
-        const file = new File([f.body], f.rel.split('/').pop()!, { type: 'text/plain' });
-        Object.defineProperty(file, 'webkitRelativePath', {
-          value: `${topFolder}/${f.rel}`,
-          configurable: true,
-        });
-        return file;
-      });
-      comp.addFolderFiles(built);
+      const items = files.map((f) => ({
+        rel: `${topFolder}/${f.rel}`,
+        file: new File([f.body], f.rel.split('/').pop()!, { type: 'text/plain' }),
+      }));
+      comp.intakeFolderEntries(items, topFolder);
     },
     { topFolder, files },
   );
