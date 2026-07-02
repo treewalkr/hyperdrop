@@ -1345,6 +1345,25 @@
             entry.xhr = null;
             if (onDone) onDone();
             if (xhr.status >= 200 && xhr.status < 300) {
+              // The server renames colliding uploads ("a.txt" → "a (1).txt").
+              // Pull the actually-written name out of the response and
+              // reconcile the card to it (via the reactive proxy, like
+              // finalizeUpload) so the progress/completion matchers and the
+              // delete/download/share actions target the renamed file — not
+              // the pre-existing one that caused the collision (issue #16).
+              let written = '';
+              try {
+                const body = JSON.parse(xhr.responseText);
+                if (body && body.files && body.files[0]) written = body.files[0].name || '';
+              } catch (e) { /* empty/non-JSON body: leave name as-requested */ }
+              if (written) {
+                const f = this.files.find((x) => x.id === entry.id);
+                if (f && written !== (f.relPath || f.name)) {
+                  const slash = written.lastIndexOf('/');
+                  f.name = slash >= 0 ? written.slice(slash + 1) : written;
+                  if (f.relPath) f.relPath = written;
+                }
+              }
               // Fallback completion path: finalizeUpload is shared with the
               // authoritative file_uploaded handler over the WS. Whichever
               // fires first owns the (held) 100% → done transition; the other

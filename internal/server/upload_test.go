@@ -832,6 +832,58 @@ func TestResolveCollidingName_Dotfile(t *testing.T) {
 	}
 }
 
+// TestResolveCollidingName_MultiDotDotfile: a leading-dot name with more than
+// one dot (e.g. ".env.local") is still treated as extension-less — the suffix
+// lands after the whole name (".env.local (1)") rather than splitting it into
+// ".env" + ".local" and producing the mangled ".env (1).local".
+func TestResolveCollidingName_MultiDotDotfile(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, ".env.local"), []byte("x"), 0o644)
+
+	got, err := resolveCollidingName(dir, ".env.local")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := filepath.Join(dir, ".env.local (1)")
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// TestResolveCollidingName_ContinuesExistingCounter: when the requested name
+// already carries a " (N)" counter and collides, the sequence continues rather
+// than stacking a second counter — "report (1).pdf" (with no "report.pdf")
+// resolves to "report (2).pdf", not "report (1) (1).pdf".
+func TestResolveCollidingName_ContinuesExistingCounter(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "report (1).pdf"), []byte("x"), 0o644)
+
+	got, err := resolveCollidingName(dir, "report (1).pdf")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := filepath.Join(dir, "report (2).pdf")
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// TestResolveCollidingName_PreservesLiteralCounterWhenFree: a requested name
+// ending in " (N)" that does NOT collide is returned unchanged — the counter
+// is only stripped/continued when a collision forces a rename.
+func TestResolveCollidingName_PreservesLiteralCounterWhenFree(t *testing.T) {
+	dir := t.TempDir()
+
+	got, err := resolveCollidingName(dir, "report (1).pdf")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := filepath.Join(dir, "report (1).pdf")
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
 // TestResolveCollidingName_ExhaustionReturnsError: when every candidate up to
 // the attempt cap is taken, the resolver gives up with an error instead of
 // looping forever or silently overwriting.

@@ -176,8 +176,6 @@ func uploadHandler(cfg cli.Config, hub *Hub) http.HandlerFunc {
 			return
 		}
 
-		relDir := relFromRoot(cfg.RootDir, base)
-
 		var saved []uploadResult
 		for {
 			part, err := reader.NextPart()
@@ -203,9 +201,9 @@ func uploadHandler(cfg cli.Config, hub *Hub) http.HandlerFunc {
 			// Directory uploads arrive as a single part whose filename carries
 			// the relative path (e.g. "vacation/sub/a.txt"). SanitizePath already
 			// resolved that to a safe nested dest; create any missing ancestor
-			// directories so os.Create succeeds for nested files. No-op for a
-			// flat filename (filepath.Dir == ".").
-			if dir := filepath.Dir(dest); dir != "" && dir != "." {
+			// directories so the file write succeeds for nested files. No-op for
+			// a flat filename (filepath.Dir == ".").
+			if dir := filepath.Dir(dest); dir != "." {
 				if err := os.MkdirAll(dir, 0o755); err != nil {
 					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 					return
@@ -213,42 +211,23 @@ func uploadHandler(cfg cli.Config, hub *Hub) http.HandlerFunc {
 			}
 
 			// Resolve a name collision inside the final directory rather than
-			// overwriting (issue #16). The suffix is inserted into the basename
-			// only, so the result stays within the already-sanitized directory
-			// — no path-sandbox escape via the suffix.
-			resolved, err := resolveCollidingName(filepath.Dir(dest), filepath.Base(dest))
-			if err != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-				return
-			}
-			dest = resolved
-
-			f, err := os.Create(dest)
+			// overwriting, and open the slot atomically (O_EXCL) so two
+			// concurrent uploads of the same name can't both win it (issue #16).
+			f, dest, err := createUniqueFile(filepath.Dir(dest), filepath.Base(dest))
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 				return
 			}
 
-			// The rename (if any) only touches the basename; the directory part
-			// of the request is unchanged. Derive the actually-written basename
-			// straight from dest — a basename has no separator, so this is
-			// symlink-safe without needing filepath.Rel — and recombine it with
-			// the request's directory for the wire-format name. The wire format
-			// is always forward slashes (webkitRelativePath / DataTransfer).
+			// Derive the wire-format name from the actually-written dest. The
+			// basename carries no separator (symlink-safe), and the directory is
+			// taken straight from the sanitized+renamed path so the reported
+			// location always matches what's on disk — never from the raw
+			// request filename, which may carry ".." or "//" that SanitizePath
+			// cleaned away. Wire format is forward slashes (webkitRelativePath).
 			baseName := filepath.Base(dest)
-			fileDir := path.Dir(filename)
-			evPath := relDir
-			if fileDir != "" && fileDir != "." {
-				if evPath == "" {
-					evPath = fileDir
-				} else {
-					evPath = evPath + "/" + fileDir
-				}
-			}
-			writtenName := baseName
-			if fileDir != "" && fileDir != "." {
-				writtenName = fileDir + "/" + baseName
-			}
+			evPath := relFromRoot(cfg.RootDir, filepath.Dir(dest))
+			writtenName := path.Join(evPath, baseName)
 
 			n, err := copyProgressed(f, part, hub, uploadProgressEvent{
 				path: evPath,
@@ -490,24 +469,19 @@ var maxCollisionAttempts = 10000
 // renaming to "name (1).ext", "name (2).ext", … when the requested name
 // already exists so uploads never silently overwrite (issue #16).
 //
-// Design note on the path-sandbox AC: rather than re-running SanitizePath on
-// every candidate, the suffix is inserted into the basename only. Since the
+// Path-sandbox AC: the suffix is inserted into the basename only. Since the
 // caller passes filepath.Base(dest) — a name with no path separator — the
 // derived candidate cannot introduce traversal and stays within the already-
-// sanitized directory. The guarantee ("no sandbox escape via the suffix") is
-// therefore equivalent to per-candidate re-validation.
+// sanitized directory, equivalent to per-candidate re-validation.
 //
-// The directory is re-stat'd for each candidate (no single pre-scan), so two
-// concurrent uploads of the same name are unlikely to resolve identically —
-// but a TOCTOU race remains between the final Lstat and the caller's Create:
-// two concurrent uploads can both pick the same non-existing candidate and
-// one will overwrite the other. This is best-effort, matching the residual
-// TOCTOU already documented in sandbox.SanitizePath.
+// This selects a name by Lstat; it does not create the file. Callers that
+// must win the slot atomically under concurrency open the result with
+// O_CREATE|O_EXCL and re-resolve on EEXIST (see createUniqueFile) — a bare
+// os.Create would reintroduce a Lstat-then-Create TOCTOU race.
 //
-// It returns an error if the loop is exhausted (every candidate up to
-// maxCollisionAttempts is taken) or if a stat fails for a reason other than
-// the candidate not existing — those real errors are surfaced rather than
-// masked as collisions.
+// Returns an error if the loop is exhausted (every candidate up to
+// maxCollisionAttempts is taken) or a stat fails for a reason other than the
+// candidate not existing; those real errors are surfaced rather than masked.
 func resolveCollidingName(dir, requested string) (string, error) {
 	target := filepath.Join(dir, requested)
 	if free, err := slotFree(target); err != nil {
@@ -517,13 +491,19 @@ func resolveCollidingName(dir, requested string) (string, error) {
 	}
 
 	ext := filepath.Ext(requested)
-	// A leading-dot name whose only dot is the leading one (e.g. ".gitignore")
-	// is a dotfile, not "no name + extension" — keep the dot in the base so the
-	// suffix lands after the whole name instead of producing " (1).gitignore".
-	if strings.HasPrefix(requested, ".") && strings.Count(requested, ".") == 1 {
+	// A leading-dot name is a dotfile (e.g. ".gitignore", ".env.local"), not
+	// "no name + extension" — keep the whole name as the base so the suffix
+	// lands after it. Checking only the leading dot (not a dot count) handles
+	// multi-dot dotfiles too: ".env.local" → ".env.local (1)", not the split
+	// ".env (1).local".
+	if strings.HasPrefix(requested, ".") {
 		ext = ""
 	}
-	base := strings.TrimSuffix(requested, ext)
+	// If the requested name already carries a " (N)" counter (this package's
+	// own suffix), continue the sequence rather than stacking a second one:
+	// re-uploading "report (1).pdf" yields "report (2).pdf", not
+	// "report (1) (1).pdf".
+	base := stripCounterSuffix(strings.TrimSuffix(requested, ext))
 
 	for i := 1; i <= maxCollisionAttempts; i++ {
 		candidate := filepath.Join(dir, fmt.Sprintf("%s (%d)%s", base, i, ext))
@@ -536,6 +516,60 @@ func resolveCollidingName(dir, requested string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("could not find non-colliding name for %q after %d attempts", requested, maxCollisionAttempts)
+}
+
+// createUniqueFile opens a new file in dir for requested, renaming on
+// collision ("name (1).ext", …) so an upload never silently overwrites, and
+// returns the opened file and its path.
+//
+// The candidate is created with O_CREATE|O_EXCL, which is atomic: two
+// concurrent uploads of the same name cannot both win the same slot — the
+// loser gets EEXIST and the loop moves to the next candidate. This closes the
+// TOCTOU a stat-then-open resolver would leave open, and also refuses a symlink
+// an attacker plants at a candidate path between attempts (O_EXCL on an
+// existing symlink fails with EEXIST rather than opening through it).
+func createUniqueFile(dir, requested string) (*os.File, string, error) {
+	for {
+		target, err := resolveCollidingName(dir, requested)
+		if err != nil {
+			return nil, "", err
+		}
+		f, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+		if err == nil {
+			return f, target, nil
+		}
+		if os.IsExist(err) {
+			// Lost the race, or a name was taken between resolveCollidingName's
+			// Lstat and this open. Re-resolve: the now-occupied slot is skipped.
+			continue
+		}
+		return nil, "", err
+	}
+}
+
+// stripCounterSuffix removes a trailing " (N)" counter — the form
+// resolveCollidingName appends — from base so a re-upload of an already-
+// suffixed name continues the sequence instead of stacking another counter.
+// Names without a trailing " (N)" (or with a non-numeric N) are returned
+// unchanged.
+func stripCounterSuffix(base string) string {
+	if !strings.HasSuffix(base, ")") {
+		return base
+	}
+	open := strings.LastIndex(base, " (")
+	if open < 0 {
+		return base
+	}
+	num := base[open+2 : len(base)-1]
+	if num == "" {
+		return base
+	}
+	for _, r := range num {
+		if r < '0' || r > '9' {
+			return base
+		}
+	}
+	return base[:open]
 }
 
 // slotFree reports whether path does not exist. A stat error that is not
