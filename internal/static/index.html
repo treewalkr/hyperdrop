@@ -567,7 +567,6 @@
     .file-card.child .file-name { font-size: 0.85rem; }
     .progress-bar.slim { height: 4px; }
 
-    .cancelled-label { color: var(--text-muted); }
     @media (max-width: 640px) { .folder-head .actions { opacity: 1; } }
 
 
@@ -809,13 +808,10 @@
                 <template x-if="folderStatus(fld) === 'done'">
                   <span>· <span class="done-label">Complete</span></span>
                 </template>
-                <template x-if="folderStatus(fld) === 'cancelled'">
-                  <span>· <span class="cancelled-label">Cancelled</span></span>
-                </template>
               </div>
               <div class="progress-bar">
                 <div class="fill"
-                     :class="folderStatus(fld) === 'done' ? 'done' : folderStatus(fld) === 'error' ? 'error' : folderStatus(fld) === 'cancelled' ? 'paused' : ''"
+                     :class="folderStatus(fld) === 'done' ? 'done' : folderStatus(fld) === 'error' ? 'error' : ''"
                      :style="'width:' + folderProgress(fld).pct + '%'"></div>
               </div>
             </div>
@@ -1492,8 +1488,7 @@
           if (!kids.length) return 'done';
           if (kids.some((f) => f.status === 'uploading')) return 'uploading';
           if (kids.every((f) => f.status === 'done')) return 'done';
-          if (kids.some((f) => f.status === 'error')) return 'error';
-          return 'cancelled';
+          return 'error'; // any non-done child that isn't uploading is an error
         },
 
         async cancelFolder(folderId) {
