@@ -212,33 +212,51 @@ func uploadHandler(cfg cli.Config, hub *Hub) http.HandlerFunc {
 				}
 			}
 
+			// Resolve a name collision inside the final directory rather than
+			// overwriting (issue #16). The suffix is inserted into the basename
+			// only, so the result stays within the already-sanitized directory
+			// — no path-sandbox escape via the suffix.
+			resolved, err := resolveCollidingName(filepath.Dir(dest), filepath.Base(dest))
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return
+			}
+			dest = resolved
+
 			f, err := os.Create(dest)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 				return
 			}
 
-			// Split the (possibly nested) filename in a slash-aware way for the
-			// progress and completion events. The wire format is always forward
-			// slashes (webkitRelativePath / DataTransfer), so the path package is
-			// correct regardless of the server's OS.
-			baseName := path.Base(filename)
+			// The rename (if any) only touches the basename; the directory part
+			// of the request is unchanged. Derive the actually-written basename
+			// straight from dest — a basename has no separator, so this is
+			// symlink-safe without needing filepath.Rel — and recombine it with
+			// the request's directory for the wire-format name. The wire format
+			// is always forward slashes (webkitRelativePath / DataTransfer).
+			baseName := filepath.Base(dest)
+			fileDir := path.Dir(filename)
 			evPath := relDir
-			if fileDir := path.Dir(filename); fileDir != "" && fileDir != "." {
+			if fileDir != "" && fileDir != "." {
 				if evPath == "" {
 					evPath = fileDir
 				} else {
 					evPath = evPath + "/" + fileDir
 				}
 			}
+			writtenName := baseName
+			if fileDir != "" && fileDir != "." {
+				writtenName = fileDir + "/" + baseName
+			}
 
 			n, err := copyProgressed(f, part, hub, uploadProgressEvent{
 				path: evPath,
-				// Full relative filename (e.g. "vacation/sub/a.txt") so the
+				// Full relative filename (e.g. "vacation/sub/a (1).txt") so the
 				// uploader can match progress to the exact entry even when two
 				// files in different subfolders share a basename. The terminal
 				// file_uploaded below uses the basename for display.
-				name: filename,
+				name: writtenName,
 			}, r.ContentLength)
 			f.Close()
 			if err != nil {
@@ -247,7 +265,7 @@ func uploadHandler(cfg cli.Config, hub *Hub) http.HandlerFunc {
 				return
 			}
 
-			saved = append(saved, uploadResult{Name: filename, Size: n})
+			saved = append(saved, uploadResult{Name: writtenName, Size: n})
 			hub.broadcast(map[string]any{
 				"type": "file_uploaded",
 				"path": evPath,
@@ -461,6 +479,76 @@ func rawFilename(part *multipart.Part) string {
 		return ""
 	}
 	return params["filename"]
+}
+
+// maxCollisionAttempts bounds how many " (N)" suffixes resolveCollidingName
+// will try before giving up. A package var (not a const) so tests can lower it
+// to exercise the exhaustion path without creating thousands of files.
+var maxCollisionAttempts = 10000
+
+// resolveCollidingName returns a path inside dir for a requested filename,
+// renaming to "name (1).ext", "name (2).ext", … when the requested name
+// already exists so uploads never silently overwrite (issue #16).
+//
+// Design note on the path-sandbox AC: rather than re-running SanitizePath on
+// every candidate, the suffix is inserted into the basename only. Since the
+// caller passes filepath.Base(dest) — a name with no path separator — the
+// derived candidate cannot introduce traversal and stays within the already-
+// sanitized directory. The guarantee ("no sandbox escape via the suffix") is
+// therefore equivalent to per-candidate re-validation.
+//
+// The directory is re-stat'd for each candidate (no single pre-scan), so two
+// concurrent uploads of the same name are unlikely to resolve identically —
+// but a TOCTOU race remains between the final Lstat and the caller's Create:
+// two concurrent uploads can both pick the same non-existing candidate and
+// one will overwrite the other. This is best-effort, matching the residual
+// TOCTOU already documented in sandbox.SanitizePath.
+//
+// It returns an error if the loop is exhausted (every candidate up to
+// maxCollisionAttempts is taken) or if a stat fails for a reason other than
+// the candidate not existing — those real errors are surfaced rather than
+// masked as collisions.
+func resolveCollidingName(dir, requested string) (string, error) {
+	target := filepath.Join(dir, requested)
+	if free, err := slotFree(target); err != nil {
+		return "", err
+	} else if free {
+		return target, nil
+	}
+
+	ext := filepath.Ext(requested)
+	// A leading-dot name whose only dot is the leading one (e.g. ".gitignore")
+	// is a dotfile, not "no name + extension" — keep the dot in the base so the
+	// suffix lands after the whole name instead of producing " (1).gitignore".
+	if strings.HasPrefix(requested, ".") && strings.Count(requested, ".") == 1 {
+		ext = ""
+	}
+	base := strings.TrimSuffix(requested, ext)
+
+	for i := 1; i <= maxCollisionAttempts; i++ {
+		candidate := filepath.Join(dir, fmt.Sprintf("%s (%d)%s", base, i, ext))
+		free, err := slotFree(candidate)
+		if err != nil {
+			return "", err
+		}
+		if free {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("could not find non-colliding name for %q after %d attempts", requested, maxCollisionAttempts)
+}
+
+// slotFree reports whether path does not exist. A stat error that is not
+// "not exist" (permission denied, I/O) is returned so callers don't mistake a
+// real failure for a collision and silently skip past it.
+func slotFree(path string) (bool, error) {
+	if _, err := os.Lstat(path); err == nil {
+		return false, nil
+	} else if os.IsNotExist(err) {
+		return true, nil
+	} else {
+		return false, err
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
