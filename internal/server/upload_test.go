@@ -340,12 +340,11 @@ func TestUpload_PathQuery_TraversalRejected(t *testing.T) {
 }
 
 // TestUpload_DotFilename_Rejected is the regression gate for issue #33: a
-// multipart upload with filename="." cleans to the upload root itself under
-// SanitizePath (which permits cleaned == absRoot), and createUniqueFile then
-// runs against the root's PARENT directory — writing a stray file outside the
-// sandbox. The uploadHandler guard rejects any filename that cleans to "."
-// (covering both "." and e.g. "foo/..") with HTTP 400, and nothing may land
-// outside the upload root.
+// multipart upload with filename="." cleans to the upload root itself, and
+// createUniqueFile then runs against the root's PARENT directory — writing a
+// stray file outside the sandbox. SanitizePath now rejects any non-empty path
+// that resolves to the root (covering both "." and e.g. "foo/..") with an
+// error, so uploadHandler returns HTTP 400 and nothing lands outside the root.
 func TestUpload_DotFilename_Rejected(t *testing.T) {
 	for _, filename := range []string{".", "foo/.."} {
 		t.Run(filename, func(t *testing.T) {

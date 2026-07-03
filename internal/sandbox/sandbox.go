@@ -28,6 +28,15 @@ func SanitizePath(rootDir, requestedPath string) (string, error) {
 	joined := filepath.Join(absRoot, requestedPath)
 	cleaned := filepath.Clean(joined)
 
+	// A non-empty request that resolves to the root itself (e.g. "." or
+	// "foo/..") is rejected: the root is never a valid file target, and a
+	// caller that then does filepath.Dir/Base on the result would operate on
+	// the root's parent — escaping the sandbox (issue #33). The empty request
+	// is the documented "root itself" form and remains valid.
+	if cleaned == absRoot && requestedPath != "" {
+		return "", errors.New("path resolves to root directory")
+	}
+
 	// Direct prefix check: catches traversal regardless of filesystem state.
 	if !strings.HasPrefix(cleaned, absRoot+string(filepath.Separator)) && cleaned != absRoot {
 		return "", errors.New("path escapes root directory")

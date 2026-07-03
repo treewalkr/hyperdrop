@@ -102,24 +102,22 @@ func TestSanitizePath_EmptyPath(t *testing.T) {
 	}
 }
 
-// TestSanitizePath_DotResolvesToRoot documents the lower-level gap behind
-// issue #33: a requested path of "." cleans to absRoot, and SanitizePath's
-// prefix check carries a `cleaned != absRoot` escape clause — so when they
-// are equal it returns root with NO error. That alone is harmless, but a
-// caller that then does filepath.Dir(result) / filepath.Base(result) (as the
-// upload handler did) operates on the root's parent and escapes the sandbox.
-// The mitigation lives in the uploadHandler (it rejects filenames that clean
-// to "."); this test only documents the observed behavior of SanitizePath so
-// the gap is visible at the layer where it originates.
+// TestSanitizePath_DotResolvesToRoot is the regression gate for issue #33 at
+// the sandbox layer: a requested path that cleans to the root itself (".", and
+// equivalents like "foo/..") must be rejected. Previously SanitizePath's prefix
+// check carried a `cleaned != absRoot` escape clause that returned the root with
+// NO error, and a caller doing filepath.Dir/Base on the result operated on the
+// root's parent — escaping the sandbox (and, for deleteHandler, wiping the root
+// via os.RemoveAll). The empty request remains the one valid "root itself" form.
 func TestSanitizePath_DotResolvesToRoot(t *testing.T) {
 	root := t.TempDir()
 
-	absRoot, _ := filepath.EvalSymlinks(root)
-	got, err := SanitizePath(root, ".")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got != absRoot {
-		t.Errorf("got %q, want %q", got, absRoot)
+	for _, requested := range []string{".", "foo/..", "./"} {
+		t.Run(requested, func(t *testing.T) {
+			_, err := SanitizePath(root, requested)
+			if err == nil {
+				t.Fatalf("expected error for %q, got nil", requested)
+			}
+		})
 	}
 }
