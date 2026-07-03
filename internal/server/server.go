@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -55,20 +56,41 @@ func newRouterWithHub(cfg cli.Config) (chi.Router, *Hub) {
 	r.Get("/", servePageWithToken(assets, "index.html", cfg.Token))
 	r.Get("/files", servePageWithToken(assets, "files.html", cfg.Token))
 	r.Get("/player", servePageWithToken(assets, "player.html", cfg.Token))
+	r.Get("/shares", servePageWithToken(assets, "shares.html", cfg.Token))
 
-	// API routes — token auth required
-	r.Route("/api", func(r chi.Router) {
-		r.Use(tokenAuth(cfg.Token))
-		r.Get("/ws", wsHandler(hub))
-		r.Post("/upload", uploadHandler(cfg, hub))
-		r.Get("/files", listHandler(cfg))
-		r.Get("/files/*", downloadHandler(cfg))
-		r.Get("/stream/*", streamHandler(cfg))
+	// Public share landing. The opaque token in the path is the recipient's
+	// only credential; shareLandingHandler validates it and sets a scoped
+	// cookie that fileAccessAuth below honors for the bound path alone. No
+	// global token is required or revealed here.
+	r.Get("/s/{token}", shareLandingHandler(assets, hub))
+
+	// File bytes — owner global token OR scoped share token. These sit outside
+	// tokenAuth so a share recipient (who has no global token) can still
+	// stream/download the single file their link grants; any other path or
+	// endpoint remains owner-only. chi registers by method+pattern, so GET
+	// /api/files/* here and DELETE /api/files/* in the owner group coexist.
+	r.Group(func(r chi.Router) {
+		r.Use(fileAccessAuth(cfg, hub))
+		r.Get("/api/stream/*", streamHandler(cfg))
 		// chi does not auto-alias HEAD onto GET routes; register it explicitly
 		// so the player can HEAD /api/stream/* for size/type without fetching
 		// the body (http.ServeContent answers HEAD with headers only).
-		r.Head("/stream/*", streamHandler(cfg))
-		r.Delete("/files/*", deleteHandler(cfg, hub))
+		r.Head("/api/stream/*", streamHandler(cfg))
+		r.Get("/api/files/*", downloadHandler(cfg))
+	})
+
+	// Owner-only API — global token required.
+	r.Group(func(r chi.Router) {
+		r.Use(tokenAuth(cfg.Token))
+		r.Get("/api/ws", wsHandler(hub))
+		r.Post("/api/upload", uploadHandler(cfg, hub))
+		r.Get("/api/files", listHandler(cfg))
+		r.Delete("/api/files/*", deleteHandler(cfg, hub))
+		// Share-link management (create/list/revoke). Owner-only by virtue of
+		// tokenAuth; a share recipient cannot mint or revoke links.
+		r.Get("/api/shares", listSharesHandler(hub))
+		r.Post("/api/shares", createShareHandler(cfg, hub))
+		r.Delete("/api/shares/{token}", revokeShareHandler(hub))
 	})
 
 	return r, hub
@@ -751,11 +773,12 @@ func servePageWithToken(fsys fs.FS, name, validToken string) http.HandlerFunc {
 	}
 }
 
-// injectNavToken rewrites the same-origin Send<->Files nav hrefs to carry
-// ?token=<token>, scoped to the in-page <nav class="header-nav"> block:
+// injectNavToken rewrites the same-origin nav hrefs to carry ?token=<token>,
+// scoped to the in-page <nav class="header-nav"> block:
 //
-//   - href="/files" -> href="/files?token=<token>"  (the Files nav link)
-//   - href="/"      -> href="/?token=<token>"        (the Send nav link)
+//   - href="/"       -> href="/?token=<token>"         (the Send nav link)
+//   - href="/files"  -> href="/files?token=<token>"     (the Files nav link)
+//   - href="/shares" -> href="/shares?token=<token>"    (the Shares nav link)
 //
 // Scoping to the nav element — rather than rewriting every href="/" in the
 // page and then trying to un-catch the brand anchor by matching its exact
@@ -783,6 +806,7 @@ func injectNavToken(body []byte, token string) []byte {
 	encoded := url.QueryEscape(token)
 	block := s[start:end]
 	block = strings.Replace(block, `href="/files"`, `href="/files?token=`+encoded+`"`, 1)
+	block = strings.Replace(block, `href="/shares"`, `href="/shares?token=`+encoded+`"`, 1)
 	block = strings.Replace(block, `href="/"`, `href="/?token=`+encoded+`"`, 1)
 	return []byte(s[:start] + block + s[end:])
 }
@@ -869,4 +893,248 @@ func tokenAuth(token string) func(http.Handler) http.Handler {
 			json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
 		})
 	}
+}
+
+// shareCookieName is the scoped credential set when a recipient opens a share
+// landing page. Unlike the session cookie (full owner access), it grants read
+// of exactly one file — the binding is enforced by fileAccessAuth.
+const shareCookieName = "hyperdrop_share"
+
+// ownerRequest reports whether r carries the global owner credential (session
+// cookie or ?token= matching validToken). It is the credential half of
+// tokenAuth without the cookie-setting side effect, factored out so fileAccessAuth
+// can accept the owner credential OR a scoped share credential.
+func ownerRequest(r *http.Request, validToken string) bool {
+	if c, err := r.Cookie(sessionCookieName); err == nil && c.Value == validToken {
+		return true
+	}
+	if t := r.URL.Query().Get("token"); t != "" && t == validToken {
+		return true
+	}
+	return false
+}
+
+// fileAccessAuth guards the byte-serving endpoints (/api/stream/*, /api/files/*).
+// It admits:
+//  1. The owner — any request carrying the global token (cookie or ?token=),
+//     with full access to every path under root, same as before.
+//  2. A share recipient — a request whose hyperdrop_share cookie names a live
+//     share whose AbsPath equals the sandbox-resolved requested path. Any other
+//     path returns 401, so a share link unlocks exactly one file (issue: scope
+//     the global token was previously the only credential, leaking full access
+//     to anyone handed a "share" URL).
+//
+// This is intentionally separate from tokenAuth so upload/list/delete stay
+// owner-only: a share cookie never reaches those routes.
+func fileAccessAuth(cfg cli.Config, hub *Hub) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if ownerRequest(r, cfg.Token) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if c, err := r.Cookie(shareCookieName); err == nil {
+				if rec, ok := hub.shares.Lookup(c.Value); ok {
+					requested := strings.TrimPrefix(chi.URLParam(r, "*"), "/")
+					if abs, err := sandbox.SanitizePath(cfg.RootDir, requested); err == nil && abs == rec.AbsPath {
+						next.ServeHTTP(w, r)
+						return
+					}
+				}
+			}
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		})
+	}
+}
+
+// shareJSON is the wire shape for share endpoints. ExpiresAt is a pointer so a
+// never-expiring link serializes to a JSON null rather than the zero time.
+type shareJSON struct {
+	Token     string     `json:"token"`
+	URL       string     `json:"url"`
+	Path      string     `json:"path"`
+	CreatedAt time.Time  `json:"created_at"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
+
+func toShareJSON(r *http.Request, rec ShareRecord) shareJSON {
+	sj := shareJSON{
+		Token:     rec.Token,
+		URL:       ShareURL(r, rec.Token),
+		Path:      rec.Path,
+		CreatedAt: rec.CreatedAt,
+	}
+	if !rec.ExpiresAt.IsZero() {
+		exp := rec.ExpiresAt
+		sj.ExpiresAt = &exp
+	}
+	return sj
+}
+
+// createShareHandler mints a scoped share link for one file. Directories are
+// rejected (single-file scope); the path is sandbox-resolved and its absolute
+// form is what fileAccessAuth later matches against, so the binding cannot be
+// rewritten by a path-trick on the recipient side.
+func createShareHandler(cfg cli.Config, hub *Hub) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Path string `json:"path"`
+			TTL  string `json:"ttl"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+		rel := strings.TrimSpace(req.Path)
+		rel = strings.TrimPrefix(rel, "/") // tolerate an accidental leading slash
+		if rel == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "path required"})
+			return
+		}
+		abs, err := sandbox.SanitizePath(cfg.RootDir, rel)
+		if err != nil {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+			return
+		}
+		info, err := os.Stat(abs)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
+			return
+		}
+		if info.IsDir() {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cannot share a directory"})
+			return
+		}
+		ttl, ok := parseTTL(req.TTL)
+		if !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid ttl"})
+			return
+		}
+		display := relFromRoot(cfg.RootDir, abs)
+		rec, err := hub.shares.Create(display, abs, ttl)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, toShareJSON(r, rec))
+	}
+}
+
+// listSharesHandler returns every live share (newest-first) for the Shares page.
+func listSharesHandler(hub *Hub) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		recs := hub.shares.List()
+		out := make([]shareJSON, 0, len(recs))
+		for _, rec := range recs {
+			out = append(out, toShareJSON(r, rec))
+		}
+		writeJSON(w, http.StatusOK, out)
+	}
+}
+
+// revokeShareHandler deletes a share link by token. Idempotent — revoking an
+// already-gone link still returns 200.
+func revokeShareHandler(hub *Hub) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		hub.shares.Revoke(chi.URLParam(r, "token"))
+		writeJSON(w, http.StatusOK, map[string]string{"ok": "revoked"})
+	}
+}
+
+// encodeRelPath URL-encodes a forward-slash relative path segment-by-segment,
+// keeping "/" as a separator — the same form the Files page produces with
+// encPath() and serveFileContent consumes via chi's "*" wildcard.
+func encodeRelPath(rel string) string {
+	parts := strings.Split(rel, "/")
+	for i, p := range parts {
+		parts[i] = url.PathEscape(p)
+	}
+	return strings.Join(parts, "/")
+}
+
+// shareLandingView is the server-injected config for the stripped landing page.
+// It is JSON-encoded (html-safe by encoding/json's default HTML escaping, so a
+// crafted filename cannot break out of the <script> it's embedded in).
+type shareLandingView struct {
+	EncPath  string `json:"encPath"`
+	Name     string `json:"name"`
+	Playable bool   `json:"playable"`
+}
+
+// shareLandingHandler serves the public recipient page at /s/{token}. On a
+// valid, non-expired token it sets the scoped cookie and renders the stripped
+// landing template with the bound file's path/playability injected; otherwise
+// it renders a plain "expired or invalid" page (no token details leak).
+func shareLandingHandler(assets fs.FS, hub *Hub) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Referrer-Policy", "same-origin")
+		rec, ok := hub.shares.Lookup(chi.URLParam(r, "token"))
+		if !ok {
+			serveShareNotFound(w, r)
+			return
+		}
+		http.SetCookie(w, &http.Cookie{
+			Name:     shareCookieName,
+			Value:    rec.Token,
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			Path:     "/",
+		})
+		base := filepath.Base(rec.AbsPath)
+		serveShareLanding(assets, w, r, shareLandingView{
+			EncPath:  encodeRelPath(rec.Path),
+			Name:     base,
+			Playable: playable(base),
+		})
+	}
+}
+
+// serveShareLanding renders share.html with the view JSON injected in place of
+// the __SHARE_DATA__ placeholder. The body is per-token (the injected path),
+// so it is served no-store like the token-bearing page responses.
+func serveShareLanding(assets fs.FS, w http.ResponseWriter, r *http.Request, view shareLandingView) {
+	f, err := assets.Open("share.html")
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+	body, err := io.ReadAll(f)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	raw, err := json.Marshal(view)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	body = bytes.ReplaceAll(body, []byte("__SHARE_DATA__"), raw)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Write(body)
+}
+
+// serveShareNotFound is the dead-link page for an expired/revoked/unknown token.
+func serveShareNotFound(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusNotFound)
+	const page = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">` +
+		`<meta name="viewport" content="width=device-width, initial-scale=1.0">` +
+		`<title>HyperDrop — Link unavailable</title>` +
+		`<style>body{background:#080b1a;color:#e8e8f8;font-family:system-ui,sans-serif;` +
+		`display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}` +
+		`.card{max-width:420px;text-align:center;padding:2.5rem;border-radius:16px;` +
+		`background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)}` +
+		`h1{font-size:1.1rem;margin:0 0 .5rem}p{color:#7878a0;margin:0;font-size:.9rem}</style></head>` +
+		`<body><div class="card"><h1>This link is no longer available</h1>` +
+		`<p>It has expired, been revoked, or the server was restarted.</p></div></body></html>`
+	io.WriteString(w, page)
+}
+
+// ShareURL builds the recipient URL for a share token using the host the owner
+// accessed the app through (r.Host — typically the LAN ip:port), so the link is
+// reachable as-is by other devices on the same network.
+func ShareURL(r *http.Request, token string) string {
+	return fmt.Sprintf("http://%s/s/%s", r.Host, token)
 }

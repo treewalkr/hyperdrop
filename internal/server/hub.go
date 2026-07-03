@@ -18,13 +18,19 @@ type subscriber struct {
 // Hub is a goroutine-safe fan-out of file-system events to all connected
 // WebSocket clients. It owns no goroutines itself; broadcast is synchronous and
 // non-blocking per subscriber.
+//
+// shares holds the in-memory share-link store. It lives on the Hub so the
+// handlers that already take a *Hub can reach it without a new parameter, and
+// because — like the subscriber set — it is process-lifetime server state.
 type Hub struct {
 	mu   sync.Mutex
 	subs map[*subscriber]struct{}
+
+	shares *ShareManager
 }
 
 func newHub() *Hub {
-	return &Hub{subs: make(map[*subscriber]struct{})}
+	return &Hub{subs: make(map[*subscriber]struct{}), shares: newShareManager()}
 }
 
 // subscribe registers a new client and returns its outbound channel.

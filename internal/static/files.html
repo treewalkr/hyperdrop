@@ -1058,6 +1058,10 @@
         <svg stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
         <span>Files</span>
       </a>
+      <a href="/shares" data-testid="nav-shares" title="Shared links" aria-label="Shared links">
+        <svg stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        <span>Shares</span>
+      </a>
     </nav>
     <div class="toolbar-spacer"></div>
 
@@ -1170,6 +1174,9 @@
                  title="Download">
                 <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
               </a>
+              <button class="act-btn" data-testid="share" x-show="!f.is_dir" @click="openShare(f)" :aria-label="'Share ' + f.name" title="Share">
+                <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              </button>
               <button class="act-btn danger" data-testid="delete" @click="deleteOne(f)" :aria-label="'Delete ' + f.name" title="Delete">
                 <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
               </button>
@@ -1210,6 +1217,9 @@
                download :aria-label="'Download ' + f.name" title="Download">
               <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
             </a>
+            <button x-show="!f.is_dir" @click="openShare(f)" :aria-label="'Share ' + f.name" title="Share">
+              <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            </button>
             <button class="danger" @click="deleteOne(f)" :aria-label="'Delete ' + f.name" title="Delete">
               <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
             </button>
@@ -1270,6 +1280,9 @@
                  download :aria-label="'Download ' + f.name" title="Download">
                 <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
               </a>
+              <button class="act-btn" data-testid="share" x-show="!f.is_dir" @click="openShare(f)" :aria-label="'Share ' + f.name" title="Share">
+                <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              </button>
               <button class="act-btn danger" @click="deleteOne(f)" :aria-label="'Delete ' + f.name" title="Delete">
                 <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
               </button>
@@ -1288,6 +1301,47 @@
       <div class="modal-actions">
         <button @click="confirmCancel()">Cancel</button>
         <button class="btn-danger" @click="confirmOk()" x-text="confirmOkLabel"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SHARE MODAL -->
+  <div class="modal-overlay" :class="{ open: shareOpen }" role="dialog" aria-modal="true"
+       @click.self="closeShare()" data-testid="share-modal">
+    <div class="modal-box" style="max-width:460px">
+      <h3>Share file</h3>
+      <p>Anyone with the link on this network can open <span class="fname" x-text="shareFile && shareFile.name"></span>. Pick how long it should last.</p>
+
+      <div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.85rem">
+        <template x-for="opt in shareTTLs" :key="opt.key">
+          <button class="sort-pill" :class="{ active: shareTTL === opt.key }"
+                  @click="shareTTL = opt.key" x-text="opt.label"></button>
+        </template>
+      </div>
+
+      <div class="modal-actions" style="justify-content:flex-start; margin-bottom:0.75rem">
+        <button class="btn-danger" style="background:var(--gradient-accent);color:#fff;border-color:transparent"
+                @click="createShare()" :disabled="shareBusy"
+                x-text="shareBusy ? 'Creating…' : 'Create link'"></button>
+      </div>
+
+      <div x-show="shareLinks.length" x-cloak style="border-top:1px solid var(--border); padding-top:0.75rem; margin-top:0.5rem">
+        <div style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); margin-bottom:0.5rem">
+          Active links for this file
+        </div>
+        <template x-for="s in shareLinks" :key="s.token">
+          <div style="display:flex; align-items:center; gap:0.5rem; padding:0.4rem 0; border-bottom:1px solid rgba(255,255,255,0.04)">
+            <span class="mono" style="flex:1; min-width:0; font-size:0.72rem; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap"
+                  x-text="s.url"></span>
+            <span style="font-size:0.7rem; color:var(--text-muted)" x-text="s.expires_at ? fmtExpires(s.expires_at) : 'never'"></span>
+            <button class="batch-btn" @click="copyShareUrl(s.url)" title="Copy" aria-label="Copy link">Copy</button>
+            <button class="batch-btn danger" @click="revokeShare(s.token)" title="Revoke" aria-label="Revoke link">Revoke</button>
+          </div>
+        </template>
+      </div>
+
+      <div class="modal-actions" style="margin-top:1rem">
+        <button @click="closeShare()">Done</button>
       </div>
     </div>
   </div>
@@ -1339,6 +1393,21 @@
         confirmBody: '',
         confirmOkLabel: 'Delete',
         _confirmResolve: null,
+
+        // Share dialog state. shareLinks holds the active links for the file
+        // currently open in the modal; the centralized /shares page is the
+        // source of truth for everything, this is the per-file view.
+        shareOpen: false,
+        shareFile: null,
+        shareTTL: '24h',
+        shareTTLs: [
+          { key: '1h', label: '1 hour' },
+          { key: '24h', label: '24 hours' },
+          { key: '7d', label: '7 days' },
+          { key: 'never', label: 'No expiry' },
+        ],
+        shareLinks: [],
+        shareBusy: false,
 
         init() {
           const params = new URLSearchParams(location.search);
@@ -1756,6 +1825,92 @@
         confirmCancel() {
           this.confirmOpen = false;
           if (this._confirmResolve) { this._confirmResolve(false); this._confirmResolve = null; }
+        },
+
+        // ---- share ----
+        async openShare(f) {
+          this.shareFile = f;
+          this.shareTTL = '24h';
+          this.shareLinks = [];
+          this.shareOpen = true;
+          await this.loadShareLinks();
+        },
+
+        closeShare() {
+          this.shareOpen = false;
+          this.shareFile = null;
+          this.shareLinks = [];
+        },
+
+        // Pull every active share and keep only those bound to this file. The
+        // server matches by absolute path; the client matches by the relative
+        // path string it knows (fullPath).
+        async loadShareLinks() {
+          if (!this.shareFile) return;
+          const target = this.fullPath(this.shareFile.name);
+          try {
+            const resp = await fetch('/api/shares');
+            if (!resp.ok) return;
+            const all = await resp.json();
+            this.shareLinks = (all || []).filter((s) => s.path === target);
+          } catch (e) { /* non-fatal */ }
+        },
+
+        async createShare() {
+          if (!this.shareFile || this.shareBusy) return;
+          this.shareBusy = true;
+          try {
+            const resp = await fetch('/api/shares', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ path: this.fullPath(this.shareFile.name), ttl: this.shareTTL }),
+            });
+            if (!resp.ok) {
+              const data = await resp.json().catch(() => ({}));
+              this.toast('share failed: ' + (data.error || resp.status), 'error');
+              return;
+            }
+            const created = await resp.json();
+            this.shareLinks.unshift(created);
+            await this.copyShareUrl(created.url);
+            this.toast('link created and copied', 'success');
+          } catch (e) {
+            this.toast('share failed', 'error');
+          } finally {
+            this.shareBusy = false;
+          }
+        },
+
+        async revokeShare(token) {
+          try {
+            const resp = await fetch('/api/shares/' + encodeURIComponent(token), { method: 'DELETE' });
+            if (!resp.ok) { this.toast('revoke failed (' + resp.status + ')', 'error'); return; }
+            this.shareLinks = this.shareLinks.filter((s) => s.token !== token);
+            this.toast('link revoked', 'success');
+          } catch (e) {
+            this.toast('revoke failed', 'error');
+          }
+        },
+
+        async copyShareUrl(url) {
+          try {
+            await navigator.clipboard.writeText(url);
+            this.toast('link copied', 'success');
+          } catch (e) {
+            this.toast('copy failed', 'error');
+          }
+        },
+
+        fmtExpires(iso) {
+          const d = new Date(iso);
+          if (isNaN(d)) return '';
+          const now = new Date();
+          const diff = d - now;
+          if (diff < 0) return 'expired';
+          const h = Math.floor(diff / 3600000);
+          if (h < 1) return Math.ceil(diff / 60000) + 'm left';
+          if (h < 24) return h + 'h left';
+          return Math.ceil(h / 24) + 'd left';
         },
 
         // ---- helpers ----

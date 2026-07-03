@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HyperDrop — Shared links</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔗</text></svg>">
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #080b1a;
+      --surface: rgba(255,255,255,0.04);
+      --surface-hover: rgba(255,255,255,0.08);
+      --border: rgba(255,255,255,0.08);
+      --border-hover: rgba(255,255,255,0.14);
+      --text: #e8e8f8;
+      --text-muted: #7878a0;
+      --accent: #7c6cf0;
+      --accent-glow: rgba(124,108,240,0.2);
+      --danger: #ff6b6b;
+      --success: #4ecdc4;
+      --radius: 16px;
+      --radius-sm: 12px;
+      --header-h: 56px;
+      --gradient-accent: linear-gradient(135deg, #7c6cf0, #4ecdc4);
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg); color: var(--text);
+      min-height: 100vh; overflow-x: hidden; position: relative;
+    }
+    button { cursor: pointer; font-family: inherit; }
+
+    .aurora-bg { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+    .aurora-blob { position: absolute; border-radius: 50%; filter: blur(120px); }
+    .aurora-blob.b1 { width: 600px; height: 600px; background: rgba(124,108,240,0.15); top: -10%; left: -5%; animation: drift 18s ease-in-out infinite; }
+    .aurora-blob.b2 { width: 500px; height: 500px; background: rgba(78,205,196,0.10); bottom: -10%; right: -8%; animation: drift 22s ease-in-out infinite reverse; }
+    @keyframes drift { 0%,100%{transform:translate(0,0) scale(1);opacity:.7} 50%{transform:translate(60px,40px) scale(1.1);opacity:1} }
+
+    .app-header {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; gap: 0.75rem;
+      padding: 0 1.5rem; height: var(--header-h);
+      background: rgba(8,11,26,0.7);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+    }
+    .app-header .brand {
+      font-size: 1.2rem; font-weight: 800; letter-spacing: -0.03em;
+      background: var(--gradient-accent);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+      text-decoration: none; flex-shrink: 0;
+    }
+    .header-nav { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+    .header-nav a {
+      display: flex; align-items: center; gap: 0.4rem;
+      padding: 0.4rem 0.85rem; border-radius: var(--radius-sm);
+      font-size: 0.85rem; font-weight: 500; color: var(--text-muted);
+      text-decoration: none; border: 1px solid transparent; transition: all 0.2s ease;
+    }
+    .header-nav a:hover { color: var(--text); background: var(--surface-hover); border-color: var(--border-hover); }
+    .header-nav a.active { color: var(--accent); border-color: rgba(124,108,240,0.3); background: var(--accent-glow); }
+    .header-nav a svg { width: 16px; height: 16px; stroke: currentColor; fill: none; }
+
+    main { position: relative; z-index: 1; max-width: 880px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+    h1 { font-size: 1.3rem; margin-bottom: 0.25rem; }
+    .lede { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
+
+    .card {
+      background: var(--surface);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      padding: 0.7rem 1.1rem; text-align: left; border-bottom: 1px solid var(--border);
+      font-size: 0.72rem; font-weight: 600; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    tbody td { padding: 0.7rem 1.1rem; font-size: 0.85rem; border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: middle; }
+    tbody tr:last-child td { border-bottom: none; }
+    td.path { word-break: break-all; }
+    td.time { color: var(--text-muted); font-size: 0.78rem; white-space: nowrap;
+              font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace; }
+    td.actions { text-align: right; white-space: nowrap; }
+    .act {
+      background: none; border: 1px solid var(--border); color: var(--text);
+      padding: 0.35rem 0.6rem; border-radius: 8px; font-size: 0.78rem; font-weight: 500;
+      margin-left: 0.35rem; transition: all 0.2s ease;
+    }
+    .act:hover { background: var(--surface-hover); border-color: var(--border-hover); }
+    .act.danger:hover { color: var(--danger); border-color: rgba(255,107,107,0.3); background: rgba(255,107,107,0.08); }
+    .act svg { width: 13px; height: 13px; stroke: currentColor; fill: none; vertical-align: -2px; }
+
+    .empty { text-align: center; padding: 3.5rem 1rem; color: var(--text-muted); font-size: 0.92rem; }
+
+    .toast-wrap { position: fixed; top: calc(var(--header-h) + 1rem); right: 1.5rem; z-index: 9999;
+                  display: flex; flex-direction: column; gap: 0.5rem; pointer-events: none; }
+    .toast { background: rgba(20,20,40,0.9); border: 1px solid var(--border); border-radius: var(--radius-sm);
+             padding: 0.6rem 0.9rem; font-size: 0.82rem; max-width: 320px; border-left: 3px solid var(--accent); }
+    .toast.success { border-left-color: var(--success); }
+    .toast.error { border-left-color: var(--danger); }
+
+    [x-cloak] { display: none !important; }
+  </style>
+</head>
+<body x-data="sharesPage()" x-init="init()">
+
+  <div class="aurora-bg" aria-hidden="true">
+    <div class="aurora-blob b1"></div>
+    <div class="aurora-blob b2"></div>
+  </div>
+
+  <header class="app-header">
+    <a href="/" class="brand">HyperDrop</a>
+    <nav class="header-nav">
+      <a href="/" data-testid="nav-send" title="Upload files" aria-label="Send files">
+        <svg stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+        <span>Send</span>
+      </a>
+      <a href="/files" data-testid="nav-files" title="Manage files" aria-label="Browse files">
+        <svg stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+        <span>Files</span>
+      </a>
+      <a href="/shares" class="active" data-testid="nav-shares" title="Shared links" aria-label="Shared links">
+        <svg stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        <span>Shares</span>
+      </a>
+    </nav>
+  </header>
+
+  <main>
+    <h1>Shared links</h1>
+    <p class="lede">Per-file links you've created. Each unlocks one file for one recipient — never your whole library. Links die on server restart.</p>
+
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>File</th>
+            <th>Created</th>
+            <th>Expires</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-if="loaded && shares.length === 0">
+            <tr><td colspan="4"><div class="empty">No active share links. Open a file on the Files page to share it.</div></td></tr>
+          </template>
+          <template x-for="s in shares" :key="s.token">
+            <tr data-testid="share-row">
+              <td class="path" x-text="s.path"></td>
+              <td class="time" x-text="fmt(s.created_at)"></td>
+              <td class="time" x-text="s.expires_at ? fmt(s.expires_at) : 'never'"></td>
+              <td class="actions">
+                <button class="act" @click="copy(s)" title="Copy link" aria-label="Copy link">
+                  <svg stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                  Copy
+                </button>
+                <button class="act danger" data-testid="revoke" @click="revoke(s)" title="Revoke link" aria-label="Revoke link">Revoke</button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <div class="toast-wrap" aria-live="polite">
+    <template x-for="t in toasts" :key="t.id">
+      <div class="toast" :class="t.type" x-text="t.msg"></div>
+    </template>
+  </div>
+
+  <script>
+    function sharesPage() {
+      return {
+        shares: [],
+        loaded: false,
+        toasts: [],
+        nextToast: 0,
+
+        async init() {
+          // The session cookie authenticates this request; no token in the URL.
+          await this.load();
+        },
+
+        async load() {
+          try {
+            const resp = await fetch('/api/shares');
+            if (!resp.ok) { this.toast('failed to load shares (' + resp.status + ')', 'error'); this.loaded = true; return; }
+            this.shares = await resp.json();
+          } catch (e) {
+            this.toast('failed to load shares', 'error');
+          }
+          this.loaded = true;
+        },
+
+        async copy(s) {
+          try {
+            await navigator.clipboard.writeText(s.url);
+            this.toast('link copied', 'success');
+          } catch (e) {
+            // Fallback: select-and-prompt won't work headless; surface the URL.
+            this.toast('copy failed — link: ' + s.url, 'error');
+          }
+        },
+
+        async revoke(s) {
+          try {
+            const resp = await fetch('/api/shares/' + encodeURIComponent(s.token), { method: 'DELETE' });
+            if (!resp.ok) { this.toast('revoke failed (' + resp.status + ')', 'error'); return; }
+            this.shares = this.shares.filter((x) => x.token !== s.token);
+            this.toast('link revoked', 'success');
+          } catch (e) {
+            this.toast('revoke failed', 'error');
+          }
+        },
+
+        fmt(iso) {
+          const d = new Date(iso);
+          if (isNaN(d)) return '';
+          return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        },
+
+        toast(msg, type) {
+          const id = ++this.nextToast;
+          this.toasts.push({ id, msg, type: type || 'info' });
+          setTimeout(() => { this.toasts = this.toasts.filter((t) => t.id !== id); }, 2500);
+        },
+      };
+    }
+  </script>
+</body>
+</html>
