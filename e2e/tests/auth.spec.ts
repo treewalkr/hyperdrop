@@ -56,7 +56,7 @@ test('unauthenticated "/api/files" returns 401 (API layer is the gate)', async (
   expect(await resp.json()).toEqual({ error: 'unauthorized' });
 });
 
-test('a wrong token does not set a cookie or inject into nav hrefs', async ({ page }) => {
+test('a wrong token does not set a cookie or inject into nav hrefs', async ({ page, request }) => {
   await page.goto('/?token=not-the-token');
 
   // The page still serves (static), but the unknown token is not trusted.
@@ -67,6 +67,15 @@ test('a wrong token does not set a cookie or inject into nav hrefs', async ({ pa
   // an unauthenticated response must not carry a token-bearing nav href.
   await expect(page.getByTestId('nav-files')).toHaveAttribute('href', '/files');
   await expect(page.getByTestId('nav-send')).toHaveAttribute('href', '/');
+
+  // The static-page no-leak path above is half the contract; the other half
+  // is the real gate. The tokenAuth middleware (internal/server/server.go,
+  // ~line 779) must refuse to serve API data to a wrong token — neither the
+  // query param nor any cookie (none was set) authenticates. This closes the
+  // gap between "page gives no cookie" and "API refuses to serve data".
+  const api = await request.get('/api/files?token=not-the-token');
+  expect(api.status()).toBe(401);
+  expect(await api.json()).toEqual({ error: 'unauthorized' });
 });
 
 test('"/?token=<token>" authenticates: dropzone visible, cookie set, URL cleaned', async ({ page }) => {
