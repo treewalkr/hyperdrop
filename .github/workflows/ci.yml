@@ -47,6 +47,9 @@ jobs:
     runs-on: ubuntu-latest
     # Browser E2E is decoupled from the Go checks so flakiness here never gates
     # fmt/vet/build/test. Drives the real binary built in the step below.
+    # Hard stop so a wedged webServer that never boots fails fast instead of
+    # running to the runner limit.
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -79,6 +82,16 @@ jobs:
         working-directory: e2e
         run: bun run check
 
+      - name: Cache Playwright browser
+        # Cache the Chromium download so a flaky/slow browser-host fetch does
+        # not block PRs or eat the per-job wall clock. Keyed on the lockfile so
+        # a Playwright bump invalidates it.
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('e2e/bun.lock') }}
+          restore-keys: ${{ runner.os }}-playwright-
+
       - name: Install Playwright browser
         working-directory: e2e
         run: npx playwright install --with-deps chromium
@@ -89,3 +102,11 @@ jobs:
           # Pre-built binary: the launch script skips its in-script `go build`.
           E2E_BIN: ${{ github.workspace }}/hyperdrop
         run: npx playwright test
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: e2e/playwright-report/
+          retention-days: 14

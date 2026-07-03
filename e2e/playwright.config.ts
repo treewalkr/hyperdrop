@@ -18,7 +18,11 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: 1,
-  reporter: 'list',
+  // 'list' for live terminal output; 'html' so CI can upload playwright-report/
+  // on failure (HTML is the report path the artifact step captures).
+  reporter: process.env.CI
+    ? [['list'], ['html', { open: 'never' }]]
+    : 'list',
   use: {
     baseURL: `http://localhost:${PORT}`,
     actionTimeout: 10_000,
