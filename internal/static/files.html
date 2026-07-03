@@ -1201,7 +1201,7 @@
           <div class="card-actions">
             <a data-testid="play" target="_player" rel="noopener"
                x-show="!f.is_dir && isPlayable(f)"
-               :href="'/player?file=' + encPath(f.name) + qs"
+               :href="'/player?file=' + encPath(f.name) + (qs ? '&' + qs.slice(1) : '')"
                :aria-label="'Play ' + f.name" title="Play">
               <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></svg>
             </a>
