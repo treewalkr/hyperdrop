@@ -101,3 +101,23 @@ func TestSanitizePath_EmptyPath(t *testing.T) {
 		t.Errorf("got %q, want %q", got, absRoot)
 	}
 }
+
+// TestSanitizePath_DotResolvesToRoot is the regression gate for issue #33 at
+// the sandbox layer: a requested path that cleans to the root itself (".", and
+// equivalents like "foo/..") must be rejected. Previously SanitizePath's prefix
+// check carried a `cleaned != absRoot` escape clause that returned the root with
+// NO error, and a caller doing filepath.Dir/Base on the result operated on the
+// root's parent — escaping the sandbox (and, for deleteHandler, wiping the root
+// via os.RemoveAll). The empty request remains the one valid "root itself" form.
+func TestSanitizePath_DotResolvesToRoot(t *testing.T) {
+	root := t.TempDir()
+
+	for _, requested := range []string{".", "foo/..", "./"} {
+		t.Run(requested, func(t *testing.T) {
+			_, err := SanitizePath(root, requested)
+			if err == nil {
+				t.Fatalf("expected error for %q, got nil", requested)
+			}
+		})
+	}
+}
