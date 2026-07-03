@@ -211,6 +211,16 @@
     // Natively <video>-decodable containers. Mirrors server.playable().
     const PLAYABLE = ['.mp4', '.m4v', '.webm', '.ogv', '.mov'];
 
+    // Escapes HTML metacharacters so a value interpolated into x-html (e.g.
+    // this.ext, derived from ?file=) cannot inject markup. Mirrors the escape()
+    // helper in files.html/index.html; exposed on window as a named function so
+    // it is unit-testable.
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+      ));
+    }
+
     function playerPage() {
       return {
         file: '',        // decoded relative path from ?file=
@@ -248,7 +258,7 @@
         },
         get stateBody() {
           if (this.state === 'missing') return 'Open a video from the Files page to play it here.';
-          return 'This format (<span class="fname mono">' + this.ext + '</span>) isn\'t decodable by the browser. Download it to watch.';
+          return 'This format (<span class="fname mono">' + escapeHtml(this.ext) + '</span>) isn\'t decodable by the browser. Download it to watch.';
         },
         get ext() {
           const i = this.file.lastIndexOf('.');
