@@ -108,13 +108,13 @@
     <div class="player-card">
       <video class="player-video" controls playsinline preload="metadata"
              data-testid="share-video"
-             :src="'/api/stream/' + encPath"
+             :src="'/api/stream/' + encPath + '?s=' + token"
              @error="playFailed = true"></video>
       <div class="player-meta">
         <span class="player-title" data-testid="share-title" x-text="name"></span>
         <div class="player-actions">
           <a class="btn" data-testid="share-download"
-             :href="'/api/files/' + encPath" :download="name"
+             :href="'/api/files/' + encPath + '?s=' + token" :download="name"
              title="Download">
             <svg stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
             Download
@@ -137,7 +137,7 @@
         <h2 data-testid="share-title" x-text="name"></h2>
         <p>This file can't be previewed in-browser — download it to open.</p>
         <a class="btn" data-testid="share-download"
-           :href="'/api/files/' + encPath" :download="name">Download</a>
+           :href="'/api/files/' + encPath + '?s=' + token" :download="name">Download</a>
       </div>
     </div>
   </main>
@@ -148,6 +148,7 @@
       return {
         name: d.name || 'file',
         encPath: d.encPath || '',
+        token: d.token || '',
         playable: !!d.playable,
         playFailed: false,
       };

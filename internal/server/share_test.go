@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -14,20 +13,24 @@ import (
 	"github.com/treewalkr/hyperdrop/internal/cli"
 )
 
-// doWithShareCookie issues req after attaching the recipient's share cookie,
-// simulating a browser that landed on /s/{token} and now requests a file.
-func doWithShareCookie(c *http.Client, req *http.Request, shareToken string) (*http.Response, error) {
-	req.AddCookie(&http.Cookie{Name: shareCookieName, Value: shareToken})
-	return c.Do(req)
+// withShare returns urlStr with the share token appended as the ?s= query param
+// — the form the landing bakes into its stream/download URLs. A leading '?' or
+// '&' is chosen so it composes with URLs that already carry a query.
+func withShare(urlStr, token string) string {
+	sep := "?"
+	if strings.Contains(urlStr, "?") {
+		sep = "&"
+	}
+	return urlStr + sep + shareTokenParam + "=" + url.QueryEscape(token)
 }
 
-// shareGet GETs url, optionally attaching a share cookie for scope tests.
-func shareGet(t *testing.T, c *http.Client, url string, tokens ...string) *http.Response {
+// shareGet GETs url, optionally appending the share token as ?s= for scope tests.
+func shareGet(t *testing.T, c *http.Client, urlStr string, tokens ...string) *http.Response {
 	t.Helper()
-	req, _ := http.NewRequest("GET", url, nil)
 	if len(tokens) > 0 && tokens[0] != "" {
-		req.AddCookie(&http.Cookie{Name: shareCookieName, Value: tokens[0]})
+		urlStr = withShare(urlStr, tokens[0])
 	}
+	req, _ := http.NewRequest("GET", urlStr, nil)
 	resp, err := c.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -71,7 +74,7 @@ func TestShare_CreateRequiresOwnerToken(t *testing.T) {
 	}
 }
 
-func TestShare_LandingSetsCookieAndStreamWorks(t *testing.T) {
+func TestShare_LandingAndStreamWorks(t *testing.T) {
 	root := t.TempDir()
 	os.WriteFile(root+"/a.mp4", []byte("mp4bytes"), 0644)
 	r := NewRouter(cli.Config{RootDir: root, Token: "secret123"})
@@ -87,12 +90,8 @@ func TestShare_LandingSetsCookieAndStreamWorks(t *testing.T) {
 		t.Errorf("url: got %q, want suffix /s/%s", u, token)
 	}
 
-	// Recipient lands on the opaque link (no global token). A jar captures the
-	// scoped cookie the landing sets; subsequent stream requests carry it.
-	jar, _ := cookiejar.New(nil)
-	client := &http.Client{Jar: jar}
-
-	landing, err := client.Get(ts.URL + "/s/" + token)
+	// Recipient lands on the opaque link (no global token, no cookie set).
+	landing, err := http.Get(ts.URL + "/s/" + token)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,8 +100,9 @@ func TestShare_LandingSetsCookieAndStreamWorks(t *testing.T) {
 		t.Fatalf("landing: got %d, want 200", landing.StatusCode)
 	}
 
-	// Stream the shared file with only the share cookie.
-	resp := shareGet(t, client, ts.URL+"/api/stream/a.mp4")
+	// Stream the shared file carrying the share token in the URL (?s=), the way
+	// the landing's player <src> does.
+	resp := shareGet(t, http.DefaultClient, ts.URL+"/api/stream/a.mp4", token)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
@@ -114,9 +114,9 @@ func TestShare_LandingSetsCookieAndStreamWorks(t *testing.T) {
 	}
 }
 
-// Scope enforcement: a share cookie must only unlock its bound path. Requesting
+// Scope enforcement: a share token must only unlock its bound path. Requesting
 // any other file (even a sibling) is an unauthorized request.
-func TestShare_CookieScopedToBoundPath(t *testing.T) {
+func TestShare_ScopedToBoundPath(t *testing.T) {
 	root := t.TempDir()
 	os.WriteFile(root+"/a.mp4", []byte("A"), 0644)
 	os.WriteFile(root+"/b.mp4", []byte("B"), 0644)
@@ -140,7 +140,7 @@ func TestShare_CookieScopedToBoundPath(t *testing.T) {
 	if resp2.StatusCode != http.StatusUnauthorized {
 		t.Errorf("sibling path: got %d, want 401", resp2.StatusCode)
 	}
-	// Traversal attempt using the share cookie → 401.
+	// Traversal attempt using the share token → 401.
 	resp3 := shareGet(t, client, ts.URL+"/api/stream/"+url.PathEscape("../../etc/passwd"), token)
 	resp3.Body.Close()
 	if resp3.StatusCode != http.StatusUnauthorized {
@@ -148,8 +148,8 @@ func TestShare_CookieScopedToBoundPath(t *testing.T) {
 	}
 }
 
-// A share cookie must not reach owner-only endpoints (list/upload/delete).
-func TestShare_CookieDoesNotGrantOwnerEndpoints(t *testing.T) {
+// A share token must not reach owner-only endpoints (list/upload/delete).
+func TestShare_DoesNotGrantOwnerEndpoints(t *testing.T) {
 	root := t.TempDir()
 	os.WriteFile(root+"/a.mp4", []byte("A"), 0644)
 	r := NewRouter(cli.Config{RootDir: root, Token: "secret123"})
@@ -160,24 +160,23 @@ func TestShare_CookieDoesNotGrantOwnerEndpoints(t *testing.T) {
 	token, _ := created["token"].(string)
 
 	// List endpoint is owner-only.
-	req, _ := http.NewRequest("GET", ts.URL+"/api/files", nil)
-	resp, err := doWithShareCookie(http.DefaultClient, req, token)
+	resp, err := http.Get(withShare(ts.URL+"/api/files", token))
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
-		t.Errorf("list with share cookie: got %d, want 401", resp.StatusCode)
+		t.Errorf("list with share token: got %d, want 401", resp.StatusCode)
 	}
 	// Delete endpoint stays owner-only.
-	req2, _ := http.NewRequest("DELETE", ts.URL+"/api/files/a.mp4", nil)
-	resp2, err := doWithShareCookie(http.DefaultClient, req2, token)
+	req, _ := http.NewRequest("DELETE", withShare(ts.URL+"/api/files/a.mp4", token), nil)
+	resp2, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp2.Body.Close()
 	if resp2.StatusCode != http.StatusUnauthorized {
-		t.Errorf("delete with share cookie: got %d, want 401", resp2.StatusCode)
+		t.Errorf("delete with share token: got %d, want 401", resp2.StatusCode)
 	}
 }
 

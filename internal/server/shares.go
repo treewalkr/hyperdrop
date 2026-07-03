@@ -137,25 +137,6 @@ func (sm *ShareManager) List() []ShareRecord {
 	return out
 }
 
-// ListForPath returns live shares bound to absPath, for a file's Share dialog.
-func (sm *ShareManager) ListForPath(absPath string) []ShareRecord {
-	now := time.Now()
-	sm.mu.RLock()
-	defer sm.mu.RUnlock()
-	var out []ShareRecord
-	for _, rec := range sm.m {
-		if rec.AbsPath != absPath {
-			continue
-		}
-		if !rec.ExpiresAt.IsZero() && rec.ExpiresAt.Before(now) {
-			continue
-		}
-		out = append(out, rec)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
-	return out
-}
-
 // generateShareToken returns an opaque, URL-safe token carrying 128 bits of
 // entropy from crypto/rand — unguessable and safe to place in a URL path
 // (the /s/{token} landing route). 16 bytes → 22 base64-raw chars.

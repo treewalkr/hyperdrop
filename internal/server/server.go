@@ -895,10 +895,12 @@ func tokenAuth(token string) func(http.Handler) http.Handler {
 	}
 }
 
-// shareCookieName is the scoped credential set when a recipient opens a share
-// landing page. Unlike the session cookie (full owner access), it grants read
-// of exactly one file — the binding is enforced by fileAccessAuth.
-const shareCookieName = "hyperdrop_share"
+// shareTokenParam is the query parameter a share landing bakes into its
+// stream/download URLs to identify the recipient's link. It travels in the URL
+// rather than a cookie so two share links open in the same browser can't
+// clobber each other's credential — each tab carries its own token in its own
+// request URLs.
+const shareTokenParam = "s"
 
 // ownerRequest reports whether r carries the global owner credential (session
 // cookie or ?token= matching validToken). It is the credential half of
@@ -914,33 +916,40 @@ func ownerRequest(r *http.Request, validToken string) bool {
 	return false
 }
 
+// shareAdmitted reports whether r carries a live share token (the ?s= param the
+// landing bakes into its URLs) whose bound file equals the sandbox-resolved
+// requested path. The path re-check on every request is the scope enforcement:
+// a token unlocks exactly one AbsPath, and traversal/sibling paths are rejected.
+func shareAdmitted(r *http.Request, hub *Hub, rootDir string) bool {
+	tok := r.URL.Query().Get(shareTokenParam)
+	if tok == "" {
+		return false
+	}
+	rec, ok := hub.shares.Lookup(tok)
+	if !ok {
+		return false
+	}
+	requested := strings.TrimPrefix(chi.URLParam(r, "*"), "/")
+	abs, err := sandbox.SanitizePath(rootDir, requested)
+	return err == nil && abs == rec.AbsPath
+}
+
 // fileAccessAuth guards the byte-serving endpoints (/api/stream/*, /api/files/*).
 // It admits:
 //  1. The owner — any request carrying the global token (cookie or ?token=),
 //     with full access to every path under root, same as before.
-//  2. A share recipient — a request whose hyperdrop_share cookie names a live
-//     share whose AbsPath equals the sandbox-resolved requested path. Any other
-//     path returns 401, so a share link unlocks exactly one file (issue: scope
-//     the global token was previously the only credential, leaking full access
-//     to anyone handed a "share" URL).
+//  2. A share recipient — a request whose ?s= token names a live share whose
+//     AbsPath equals the sandbox-resolved requested path. Any other path
+//     returns 401, so a share link unlocks exactly one file.
 //
 // This is intentionally separate from tokenAuth so upload/list/delete stay
-// owner-only: a share cookie never reaches those routes.
+// owner-only: a share token never reaches those routes.
 func fileAccessAuth(cfg cli.Config, hub *Hub) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if ownerRequest(r, cfg.Token) {
+			if ownerRequest(r, cfg.Token) || shareAdmitted(r, hub, cfg.RootDir) {
 				next.ServeHTTP(w, r)
 				return
-			}
-			if c, err := r.Cookie(shareCookieName); err == nil {
-				if rec, ok := hub.shares.Lookup(c.Value); ok {
-					requested := strings.TrimPrefix(chi.URLParam(r, "*"), "/")
-					if abs, err := sandbox.SanitizePath(cfg.RootDir, requested); err == nil && abs == rec.AbsPath {
-						next.ServeHTTP(w, r)
-						return
-					}
-				}
 			}
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		})
@@ -1058,13 +1067,16 @@ func encodeRelPath(rel string) string {
 type shareLandingView struct {
 	EncPath  string `json:"encPath"`
 	Name     string `json:"name"`
+	Token    string `json:"token"`
 	Playable bool   `json:"playable"`
 }
 
 // shareLandingHandler serves the public recipient page at /s/{token}. On a
-// valid, non-expired token it sets the scoped cookie and renders the stripped
-// landing template with the bound file's path/playability injected; otherwise
-// it renders a plain "expired or invalid" page (no token details leak).
+// valid, non-expired token it renders the stripped landing template with the
+// bound file's path/token/playability injected; otherwise it renders a plain
+// "expired or invalid" page (no token details leak). No cookie is set — the
+// token is baked into the page's own stream/download URLs as ?s=, so each tab
+// is independently credentialed.
 func shareLandingHandler(assets fs.FS, hub *Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Referrer-Policy", "same-origin")
@@ -1073,17 +1085,11 @@ func shareLandingHandler(assets fs.FS, hub *Hub) http.HandlerFunc {
 			serveShareNotFound(w, r)
 			return
 		}
-		http.SetCookie(w, &http.Cookie{
-			Name:     shareCookieName,
-			Value:    rec.Token,
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-			Path:     "/",
-		})
 		base := filepath.Base(rec.AbsPath)
 		serveShareLanding(assets, w, r, shareLandingView{
 			EncPath:  encodeRelPath(rec.Path),
 			Name:     base,
+			Token:    rec.Token,
 			Playable: playable(base),
 		})
 	}
@@ -1132,9 +1138,15 @@ func serveShareNotFound(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, page)
 }
 
-// ShareURL builds the recipient URL for a share token using the host the owner
-// accessed the app through (r.Host — typically the LAN ip:port), so the link is
-// reachable as-is by other devices on the same network.
+// ShareURL builds the recipient URL for a share token using the scheme and host
+// the owner accessed the app through (r.Host — typically the LAN ip:port), so
+// the link is reachable as-is by other devices on the same network. The scheme
+// follows the request, so a TLS or reverse-proxied deployment yields an https
+// link rather than forcing a downgrade.
 func ShareURL(r *http.Request, token string) string {
-	return fmt.Sprintf("http://%s/s/%s", r.Host, token)
+	scheme := "http"
+	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+		scheme = "https"
+	}
+	return fmt.Sprintf("%s://%s/s/%s", scheme, r.Host, token)
 }
