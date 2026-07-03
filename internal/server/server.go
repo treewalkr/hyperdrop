@@ -191,6 +191,14 @@ func uploadHandler(cfg cli.Config, hub *Hub) http.HandlerFunc {
 			if filename == "" {
 				continue
 			}
+			// A filename that cleans to "." resolves to the upload root itself
+			// under SanitizePath (which permits cleaned == absRoot), then
+			// createUniqueFile writes into the root's parent — outside the
+			// sandbox. Reject it up front.
+			if filepath.Clean(filename) == "." {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid filename"})
+				return
+			}
 
 			dest, err := sandbox.SanitizePath(base, filename)
 			if err != nil {

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/treewalkr/hyperdrop/internal/cli"
@@ -335,6 +336,65 @@ func TestUpload_PathQuery_TraversalRejected(t *testing.T) {
 	if resp.StatusCode != http.StatusForbidden {
 		b, _ := io.ReadAll(resp.Body)
 		t.Errorf("status: got %d, want 403. body: %s", resp.StatusCode, b)
+	}
+}
+
+// TestUpload_DotFilename_Rejected is the regression gate for issue #33: a
+// multipart upload with filename="." cleans to the upload root itself under
+// SanitizePath (which permits cleaned == absRoot), and createUniqueFile then
+// runs against the root's PARENT directory — writing a stray file outside the
+// sandbox. The uploadHandler guard rejects any filename that cleans to "."
+// (covering both "." and e.g. "foo/..") with HTTP 400, and nothing may land
+// outside the upload root.
+func TestUpload_DotFilename_Rejected(t *testing.T) {
+	for _, filename := range []string{".", "foo/.."} {
+		t.Run(filename, func(t *testing.T) {
+			root := t.TempDir()
+			cfg := cli.Config{RootDir: root, Token: "secret123"}
+			r := NewRouter(cfg)
+			ts := httptest.NewServer(r)
+			defer ts.Close()
+
+			body := &bytes.Buffer{}
+			writer := multipart.NewWriter(body)
+			part, err := writer.CreateFormFile("file", filename)
+			if err != nil {
+				t.Fatal(err)
+			}
+			part.Write([]byte("pwned"))
+			writer.Close()
+
+			req, _ := http.NewRequest("POST", ts.URL+"/api/upload?token=secret123", body)
+			req.Header.Set("Content-Type", writer.FormDataContentType())
+
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusBadRequest {
+				b, _ := io.ReadAll(resp.Body)
+				t.Fatalf("status: got %d, want 400. body: %s", resp.StatusCode, b)
+			}
+
+			// Nothing may escape the root: no stray file appears in the root's
+			// parent named after the root's basename (the pre-fix escape). The
+			// root dir itself sits in the parent under that name, so only flag
+			// non-directory entries.
+			parent := filepath.Dir(root)
+			rootBase := filepath.Base(root)
+			if entries, err := os.ReadDir(parent); err == nil {
+				for _, e := range entries {
+					if e.IsDir() {
+						continue
+					}
+					if e.Name() == rootBase || strings.HasPrefix(e.Name(), rootBase+" ") {
+						t.Errorf("stray file escaped root into parent: %s", filepath.Join(parent, e.Name()))
+					}
+				}
+			}
+		})
 	}
 }
 
