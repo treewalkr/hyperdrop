@@ -11,12 +11,13 @@ import { PORT, TOKEN } from './lib/config.mjs';
 
 export default defineConfig({
   testDir: './tests',
-  // One shared server + one shared upload root: tests in a file must run in
-  // order so per-test wipes/uploads don't race across parallel workers.
+  // One shared server + one shared upload root. More than one worker would run
+  // dir-touching spec files (upload, player) concurrently against that single
+  // root and race on per-test wipes/uploads, so the whole suite is serial.
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  workers: 1,
   reporter: 'list',
   use: {
     baseURL: `http://localhost:${PORT}`,
