@@ -41,7 +41,9 @@ func newShareManager() *ShareManager {
 	return &ShareManager{m: make(map[string]ShareRecord)}
 }
 
-// TTL presets offered by the share UI. An empty ttl means "never".
+// TTL presets offered by the share UI. parseTTL resolves the preset keys (and
+// the empty string) into these; "never" is encoded as a zero duration, not a
+// value in this block.
 const (
 	shareTTLHour = time.Hour
 	shareTTLDay  = 24 * time.Hour

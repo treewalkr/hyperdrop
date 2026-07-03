@@ -6,6 +6,7 @@
   <title>HyperDrop — Shared links</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔗</text></svg>">
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="/clipboard.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -199,35 +200,10 @@
         },
 
         async copy(s) {
-          if (await this.copyText(s.url)) {
+          if (await hdCopy(s.url)) {
             this.toast('link copied', 'success');
           } else {
             this.toast('copy failed — long-press the link to copy', 'error');
-          }
-        },
-
-        // Copy text to the clipboard, working on the plain-HTTP LAN as well as
-        // https/localhost. navigator.clipboard is undefined outside a secure
-        // context, so fall back to a hidden textarea + execCommand('copy') —
-        // deprecated but the only option that works from http://<lan-ip>.
-        async copyText(text) {
-          if (navigator.clipboard && window.isSecureContext) {
-            try { await navigator.clipboard.writeText(text); return true; } catch (e) { /* fall through */ }
-          }
-          try {
-            const ta = document.createElement('textarea');
-            ta.value = text;
-            ta.setAttribute('readonly', '');
-            ta.style.position = 'fixed';
-            ta.style.top = '-1000px';
-            ta.style.opacity = '0';
-            document.body.appendChild(ta);
-            ta.select();
-            const ok = document.execCommand('copy');
-            document.body.removeChild(ta);
-            return ok;
-          } catch (e) {
-            return false;
           }
         },
 

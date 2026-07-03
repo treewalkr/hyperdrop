@@ -58,10 +58,16 @@ func newRouterWithHub(cfg cli.Config) (chi.Router, *Hub) {
 	r.Get("/player", servePageWithToken(assets, "player.html", cfg.Token))
 	r.Get("/shares", servePageWithToken(assets, "shares.html", cfg.Token))
 
+	// Shared static helper scripts — no secrets, so unauthenticated. Pages
+	// pull these in via <script src>; clipboard.js is the copy-to-clipboard
+	// helper used by the Files and Shares pages.
+	r.Get("/clipboard.js", serveFile(assets, "clipboard.js"))
+
 	// Public share landing. The opaque token in the path is the recipient's
-	// only credential; shareLandingHandler validates it and sets a scoped
-	// cookie that fileAccessAuth below honors for the bound path alone. No
-	// global token is required or revealed here.
+	// only credential; shareLandingHandler validates it and bakes it into the
+	// page's own stream/download URLs as ?s=, which fileAccessAuth below
+	// honors for the bound path alone. No cookie is set and no global token
+	// is required or revealed here.
 	r.Get("/s/{token}", shareLandingHandler(assets, hub))
 
 	// File bytes — owner global token OR scoped share token. These sit outside
@@ -867,24 +873,48 @@ func RunServer(cfg cli.Config, w io.Writer) error {
 
 const sessionCookieName = "hyperdrop_session"
 
+// setSessionCookie writes the owner session cookie that ownerAuthenticated and
+// the page handlers check. It is the persistent credential that lets a single
+// ?token= bearing request authenticate subsequent same-origin requests.
+func setSessionCookie(w http.ResponseWriter, token string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    token,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Path:     "/",
+	})
+}
+
+// ownerAuthenticated reports whether r carries the owner credential (session
+// cookie or ?token= matching validToken) and, when the credential is the
+// query param, (re)establishes the session cookie so the rest of the owner's
+// same-origin requests — page loads and owner-only endpoints alike — stay
+// authenticated without ?token=. An empty validToken never authenticates, so
+// a misconfiguration with no token can't degrade into open access.
+//
+// tokenAuth and fileAccessAuth both route through this so the cookie side
+// effect is identical on every owner-authenticated route, including the byte
+// routes that used to set it under the old umbrella tokenAuth group.
+func ownerAuthenticated(w http.ResponseWriter, r *http.Request, validToken string) bool {
+	if validToken == "" {
+		return false
+	}
+	if c, err := r.Cookie(sessionCookieName); err == nil && c.Value == validToken {
+		return true
+	}
+	if t := r.URL.Query().Get("token"); t != "" && t == validToken {
+		setSessionCookie(w, validToken)
+		return true
+	}
+	return false
+}
+
 // tokenAuth returns middleware that validates token via cookie or ?token= query param.
 func tokenAuth(token string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Check session cookie first.
-			if c, err := r.Cookie(sessionCookieName); err == nil && c.Value == token {
-				next.ServeHTTP(w, r)
-				return
-			}
-			// Check ?token= query param.
-			if t := r.URL.Query().Get("token"); t == token {
-				http.SetCookie(w, &http.Cookie{
-					Name:     sessionCookieName,
-					Value:    token,
-					HttpOnly: true,
-					SameSite: http.SameSiteLaxMode,
-					Path:     "/",
-				})
+			if ownerAuthenticated(w, r, token) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -901,20 +931,6 @@ func tokenAuth(token string) func(http.Handler) http.Handler {
 // clobber each other's credential — each tab carries its own token in its own
 // request URLs.
 const shareTokenParam = "s"
-
-// ownerRequest reports whether r carries the global owner credential (session
-// cookie or ?token= matching validToken). It is the credential half of
-// tokenAuth without the cookie-setting side effect, factored out so fileAccessAuth
-// can accept the owner credential OR a scoped share credential.
-func ownerRequest(r *http.Request, validToken string) bool {
-	if c, err := r.Cookie(sessionCookieName); err == nil && c.Value == validToken {
-		return true
-	}
-	if t := r.URL.Query().Get("token"); t != "" && t == validToken {
-		return true
-	}
-	return false
-}
 
 // shareAdmitted reports whether r carries a live share token (the ?s= param the
 // landing bakes into its URLs) whose bound file equals the sandbox-resolved
@@ -937,7 +953,9 @@ func shareAdmitted(r *http.Request, hub *Hub, rootDir string) bool {
 // fileAccessAuth guards the byte-serving endpoints (/api/stream/*, /api/files/*).
 // It admits:
 //  1. The owner — any request carrying the global token (cookie or ?token=),
-//     with full access to every path under root, same as before.
+//     with full access to every path under root, same as before. ownerAuthenticated
+//     also (re)establishes the session cookie on the ?token= path, restoring the
+//     side effect these routes had when they lived under the umbrella tokenAuth.
 //  2. A share recipient — a request whose ?s= token names a live share whose
 //     AbsPath equals the sandbox-resolved requested path. Any other path
 //     returns 401, so a share link unlocks exactly one file.
@@ -947,7 +965,7 @@ func shareAdmitted(r *http.Request, hub *Hub, rootDir string) bool {
 func fileAccessAuth(cfg cli.Config, hub *Hub) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if ownerRequest(r, cfg.Token) || shareAdmitted(r, hub, cfg.RootDir) {
+			if ownerAuthenticated(w, r, cfg.Token) || shareAdmitted(r, hub, cfg.RootDir) {
 				next.ServeHTTP(w, r)
 				return
 			}
