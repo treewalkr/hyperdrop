@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -112,15 +113,26 @@ func TestGenerateToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(tok) != 8 {
-		t.Errorf("token length: got %d, want 8", len(tok))
+	// 8 chars is brute-forceable; require at least 16 (the current length).
+	if len(tok) < 16 {
+		t.Errorf("token length: got %d, want >= 16", len(tok))
+	}
+	if len(tok) != 16 {
+		t.Errorf("token length: got %d, want exactly 16", len(tok))
 	}
 
-	// Must be lowercase alphanumeric.
+	// Must be lowercase alphanumeric (the expected charset).
+	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
 	for _, c := range tok {
-		if !strings.ContainsRune("abcdefghijklmnopqrstuvwxyz0123456789", c) {
+		if !strings.ContainsRune(charset, c) {
 			t.Errorf("token contains unexpected char %q", c)
 		}
+	}
+
+	// Must be URL-safe: round-tripping through QueryEscape is a no-op only
+	// when no character needs escaping.
+	if got := url.QueryEscape(tok); got != tok {
+		t.Errorf("token not URL-safe: %q escaped to %q", tok, got)
 	}
 
 	// Two calls should produce different tokens.

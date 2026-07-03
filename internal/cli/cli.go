@@ -88,9 +88,9 @@ func ParseArgs(args []string) (Config, error) {
 
 const tokenChars = "abcdefghijklmnopqrstuvwxyz0123456789"
 
-// GenerateToken returns a random 8-character lowercase alphanumeric token.
+// GenerateToken returns a random 16-character lowercase alphanumeric token.
 func GenerateToken() (string, error) {
-	b := make([]byte, 8)
+	b := make([]byte, 16)
 	for i := range b {
 		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(tokenChars))))
 		if err != nil {
