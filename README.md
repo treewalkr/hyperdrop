@@ -36,8 +36,8 @@ go install github.com/treewalkr/hyperdrop/cmd/hyperdrop@latest
 
 ```bash
 # macOS (Apple Silicon)
-curl -sLO https://github.com/treewalkr/hyperdrop/releases/latest/download/hyperdrop_0.1.0_macos_arm64.tar.gz
-tar xzf hyperdrop_0.1.0_macos_arm64.tar.gz
+curl -sLO https://github.com/treewalkr/hyperdrop/releases/latest/download/hyperdrop_0.2.0_macos_arm64.tar.gz
+tar xzf hyperdrop_0.2.0_macos_arm64.tar.gz
 ```
 
 Assets are published for macOS, Linux (amd64 + arm64), and Windows, with a
@@ -47,7 +47,7 @@ Assets are published for macOS, Linux (amd64 + arm64), and Windows, with a
 
 ```bash
 $ hyperdrop
-http://192.168.1.42:8080/?token=a7x9k2m4
+http://192.168.1.42:8080/?token=a7x9k2m4p8q1w5r3
 ```
 
 Open that URL on any device on the same Wi-Fi. The token is auto-generated on
@@ -58,7 +58,7 @@ each run; the server sets a session cookie so you stay signed in.
 | Flag | Default | Purpose |
 |------|---------|---------|
 | `[directory]` | `.` | Root directory to serve |
-| `--token` | auto-generated 8 chars | Access token |
+| `--token` | auto-generated 16 chars | Access token |
 | `--host` | `0.0.0.0` | Bind address (use `127.0.0.1` for localhost-only) |
 | `--port` | `8080` | Listen port |
 | `--max-size` | unlimited | Max upload size, e.g. `500MB`, `2GB` |
