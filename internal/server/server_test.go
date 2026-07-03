@@ -141,6 +141,32 @@ func TestNetworkURL_Localhost(t *testing.T) {
 	}
 }
 
+func TestNewHTTPServer_Timeouts(t *testing.T) {
+	s := newHTTPServer(":0", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+
+	if s.Addr != ":0" {
+		t.Errorf("Addr: got %q, want %q", s.Addr, ":0")
+	}
+	if s.Handler == nil {
+		t.Error("Handler should be set")
+	}
+	// Slowloris mitigation: header/idle timeouts must be set.
+	if s.ReadHeaderTimeout <= 0 {
+		t.Errorf("ReadHeaderTimeout should be > 0 to mitigate slowloris, got %v", s.ReadHeaderTimeout)
+	}
+	if s.IdleTimeout <= 0 {
+		t.Errorf("IdleTimeout should be > 0, got %v", s.IdleTimeout)
+	}
+	// WriteTimeout/ReadTimeout MUST stay 0: they would terminate large
+	// streamed uploads (uploadHandler) and long /api/stream responses.
+	if s.WriteTimeout != 0 {
+		t.Errorf("WriteTimeout must stay 0 to avoid killing large uploads and stream responses, got %v", s.WriteTimeout)
+	}
+	if s.ReadTimeout != 0 {
+		t.Errorf("ReadTimeout must stay 0 to avoid killing large uploads, got %v", s.ReadTimeout)
+	}
+}
+
 func TestNetworkURL_ZeroHostResolvesLAN(t *testing.T) {
 	cfg := cli.Config{
 		Host:  "0.0.0.0",

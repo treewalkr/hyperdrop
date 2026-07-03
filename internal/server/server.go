@@ -800,6 +800,23 @@ func lookupLANIP() string {
 	return "127.0.0.1"
 }
 
+// newHTTPServer constructs the *http.Server used by RunServer.
+//
+// Only ReadHeaderTimeout and IdleTimeout are set: together they mitigate
+// slowloris-style denial of service (an unauthenticated attacker keeping a
+// connection open by dripping headers or holding it idle) without an auth
+// check. WriteTimeout and ReadTimeout are intentionally left zero because
+// they would terminate large streamed uploads (uploadHandler) and long-lived
+// /api/stream video responses mid-transfer.
+func newHTTPServer(addr string, h http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           h,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+}
+
 // RunServer starts the HTTP server, prints the network URL to w, and blocks
 // until the server exits.
 func RunServer(cfg cli.Config, w io.Writer) error {
@@ -808,7 +825,8 @@ func RunServer(cfg cli.Config, w io.Writer) error {
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 	fmt.Fprintf(w, "%s\n", NetworkURL(cfg))
 
-	return http.ListenAndServe(addr, r)
+	srv := newHTTPServer(addr, r)
+	return srv.ListenAndServe()
 }
 
 const sessionCookieName = "hyperdrop_session"
