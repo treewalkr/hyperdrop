@@ -54,6 +54,7 @@ func newRouterWithHub(cfg cli.Config) (chi.Router, *Hub) {
 	// with plain token-less hrefs and never receive the token.
 	r.Get("/", servePageWithToken(assets, "index.html", cfg.Token))
 	r.Get("/files", servePageWithToken(assets, "files.html", cfg.Token))
+	r.Get("/player", servePageWithToken(assets, "player.html", cfg.Token))
 
 	// API routes — token auth required
 	r.Route("/api", func(r chi.Router) {
@@ -62,6 +63,11 @@ func newRouterWithHub(cfg cli.Config) (chi.Router, *Hub) {
 		r.Post("/upload", uploadHandler(cfg, hub))
 		r.Get("/files", listHandler(cfg))
 		r.Get("/files/*", downloadHandler(cfg))
+		r.Get("/stream/*", streamHandler(cfg))
+		// chi does not auto-alias HEAD onto GET routes; register it explicitly
+		// so the player can HEAD /api/stream/* for size/type without fetching
+		// the body (http.ServeContent answers HEAD with headers only).
+		r.Head("/stream/*", streamHandler(cfg))
 		r.Delete("/files/*", deleteHandler(cfg, hub))
 	})
 
@@ -366,6 +372,18 @@ func categorize(name string) string {
 	}
 }
 
+// playable reports whether a video file can be decoded by browsers' native
+// <video> element. Containers like mkv/avi/flv/wmv are tagged "vid" by
+// categorize but cannot play in-browser, so the player falls back to download.
+func playable(name string) bool {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".mp4", ".m4v", ".webm", ".ogv", ".mov":
+		return true
+	default:
+		return false
+	}
+}
+
 // escapeFilename produces a safe Content-Disposition filename token.
 // If the name contains only safe chars, returns a quoted string.
 // Otherwise returns RFC 6266 filename*=UTF-8” URL-encoded form.
@@ -388,35 +406,55 @@ func downloadHandler(cfg cli.Config) http.HandlerFunc {
 		// chi wildcards: /* captures as "/" + remainder
 		requested := chi.URLParam(r, "*")
 		requested = strings.TrimPrefix(requested, "/")
-
-		if requested == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "filename required"})
-			return
-		}
-
-		dest, err := sandbox.SanitizePath(cfg.RootDir, requested)
-		if err != nil {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
-			return
-		}
-
-		f, err := os.Open(dest)
-		if err != nil {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
-			return
-		}
-		defer f.Close()
-
-		stat, err := f.Stat()
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-			return
-		}
-
-		name := filepath.Base(dest)
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", escapeFilename(name)))
-		http.ServeContent(w, r, name, stat.ModTime(), f)
+		serveFileContent(w, r, cfg, requested, true)
 	}
+}
+
+// streamHandler serves file bytes inline (no Content-Disposition: attachment)
+// so a <video src> element can play them. http.ServeContent still honors Range
+// requests, so seeking works without extra code.
+func streamHandler(cfg cli.Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		requested := chi.URLParam(r, "*")
+		requested = strings.TrimPrefix(requested, "/")
+		serveFileContent(w, r, cfg, requested, false)
+	}
+}
+
+// serveFileContent streams file bytes with Range/206 support via
+// http.ServeContent. When attachment is true it sets Content-Disposition:
+// attachment (a forced download); when false the response is inline so the
+// bytes can be handed to a <video> element.
+func serveFileContent(w http.ResponseWriter, r *http.Request, cfg cli.Config, requested string, attachment bool) {
+	if requested == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "filename required"})
+		return
+	}
+
+	dest, err := sandbox.SanitizePath(cfg.RootDir, requested)
+	if err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+		return
+	}
+
+	f, err := os.Open(dest)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
+		return
+	}
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	name := filepath.Base(dest)
+	if attachment {
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", escapeFilename(name)))
+	}
+	http.ServeContent(w, r, name, stat.ModTime(), f)
 }
 
 func deleteHandler(cfg cli.Config, hub *Hub) http.HandlerFunc {

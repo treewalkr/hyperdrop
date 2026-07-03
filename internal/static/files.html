@@ -1158,6 +1158,12 @@
             <td class="date" x-text="relativeTime(f.date)"></td>
             <td class="from"><span class="from-dot"></span>this device</td>
             <td class="row-actions">
+              <a class="act-btn" data-testid="play" target="_player" rel="noopener"
+                 x-show="!f.is_dir && isPlayable(f)"
+                 :href="'/player?file=' + encPath(f.name) + (qs ? '&' + qs.slice(1) : '')"
+                 :aria-label="'Play ' + f.name" title="Play">
+                <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+              </a>
               <a class="act-btn" data-testid="download" x-show="!f.is_dir"
                  :href="'/api/files/' + encPath(f.name) + qs"
                  download :aria-label="'Download ' + f.name"
@@ -1193,6 +1199,12 @@
             </span>
           </div>
           <div class="card-actions">
+            <a data-testid="play" target="_player" rel="noopener"
+               x-show="!f.is_dir && isPlayable(f)"
+               :href="'/player?file=' + encPath(f.name) + qs"
+               :aria-label="'Play ' + f.name" title="Play">
+              <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+            </a>
             <a x-show="!f.is_dir"
                :href="'/api/files/' + encPath(f.name) + qs"
                download :aria-label="'Download ' + f.name" title="Download">
@@ -1247,6 +1259,12 @@
               </div>
             </div>
             <div class="feed-actions">
+              <a class="act-btn" data-testid="play" target="_player" rel="noopener"
+                 x-show="!f.is_dir && isPlayable(f)"
+                 :href="'/player?file=' + encPath(f.name) + (qs ? '&' + qs.slice(1) : '')"
+                 :aria-label="'Play ' + f.name" title="Play">
+                <svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+              </a>
               <a class="act-btn" x-show="!f.is_dir"
                  :href="'/api/files/' + encPath(f.name) + qs"
                  download :aria-label="'Download ' + f.name" title="Download">
@@ -1295,6 +1313,8 @@
         { key: 'B', name: 'Grid' },
         { key: 'C', name: 'Feed' },
       ];
+      // Natively <video>-decodable containers — mirrors server.playable().
+      const PLAYABLE_EXTS = ['.mp4', '.m4v', '.webm', '.ogv', '.mov'];
 
       return {
         files: [],
@@ -1517,6 +1537,16 @@
         badgeText(f) {
           if (f.is_dir) return 'DIR';
           return f.ext || 'FILE';
+        },
+
+        // Natively <video>-decodable containers only — mirrors server.playable().
+        // Non-playable vid files (mkv/avi/flv/wmv) keep the Download button but
+        // get no Play action.
+        isPlayable(f) {
+          if (f.is_dir || (f.category || 'file') !== 'vid') return false;
+          const i = f.name.lastIndexOf('.');
+          if (i < 0) return false;
+          return PLAYABLE_EXTS.includes(f.name.slice(i).toLowerCase());
         },
 
         // ---- derived views ----
