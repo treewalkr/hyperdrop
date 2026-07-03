@@ -100,9 +100,12 @@ test('authenticated "/" injects the token onto Send<->Files nav hrefs', async ({
 
   // Only a request that proved knowledge of the token gets token-bearing
   // same-origin nav hrefs (the next click re-seeds the cookie). The brand
-  // link is intentionally excluded — only the in-app nav carries it.
-  await expect(page.getByTestId('nav-files')).toHaveAttribute('href', `/files?token=${TOKEN}`);
-  await expect(page.getByTestId('nav-send')).toHaveAttribute('href', `/?token=${TOKEN}`);
+  // link is intentionally excluded — only the in-app nav carries it. The
+  // server injects url.QueryEscape(token), so match the encoded form — this
+  // keeps the assertion correct if TOKEN ever contains a reserved char.
+  const enc = encodeURIComponent(TOKEN);
+  await expect(page.getByTestId('nav-files')).toHaveAttribute('href', `/files?token=${enc}`);
+  await expect(page.getByTestId('nav-send')).toHaveAttribute('href', `/?token=${enc}`);
 });
 
 test('with the cookie set, "/files" loads from the cookie (no token in URL)', async ({ page }) => {
@@ -110,14 +113,21 @@ test('with the cookie set, "/files" loads from the cookie (no token in URL)', as
   await page.goto(`/?token=${TOKEN}`);
   await expect(page.getByTestId('dropzone')).toBeVisible();
 
-  // From here the cookie — not the URL — is the credential. Navigate to the
-  // Files page with no token in the URL: the page renders, the file-list
-  // API call authenticates via the cookie, and the URL stays clean.
+  // The cookie — not the URL — must authenticate the API. Probe directly with
+  // page.request, which shares the page context's cookies and carries no
+  // query token: a 200 here is the real proof tokenAuth honors the cookie.
+  // (Asserting only an empty file list would not do — load() leaves the list
+  // empty on a 401 too, so the list alone can't tell success from failure.)
+  expect((await page.request.get('/api/files')).status()).toBe(200);
+
+  // Navigate to the Files page with no token in the URL: the page renders,
+  // its file-list API call authenticates via the cookie, and the URL is clean.
   await page.goto('/files');
   await expect(page).toHaveURL('/files');
   await expect(page.getByTestId('nav-files')).toBeVisible();
-  // The file list container is present even when empty — the page rendered
-  // its data load successfully (no 401 toast, no redirect).
+  // load() toasts "failed to load files (<status>)" on !ok — its absence is
+  // the in-page signal that the cookie-only data load succeeded.
+  await expect(page.getByTestId('toasts')).not.toContainText('failed to load files');
   await expect(page.getByTestId('file-item')).toHaveCount(0);
 });
 
@@ -130,6 +140,11 @@ test('nav round-trip Send -> Files -> Send keeps the session authenticated', asy
   await page.getByTestId('nav-files').click();
   await expect(page).toHaveURL(/\/files/);
   await expect(page.getByTestId('nav-files')).toBeVisible();
+  // On the Files page the cookie alone (no query token — page.request shares
+  // the context cookies) must still authenticate the API. This is the leg
+  // the round-trip is meant to prove; the nav href carried the token here,
+  // so the URL can't be the proof on its own.
+  expect((await page.request.get('/api/files')).status()).toBe(200);
 
   // Files -> Send: round-trip back. Still authenticated — the dropzone
   // renders and no login/redirect intercepts the navigation. Asserting the
@@ -139,7 +154,11 @@ test('nav round-trip Send -> Files -> Send keeps the session authenticated', asy
   await expect(page.getByTestId('dropzone')).toBeVisible();
   expect(new URL(page.url()).pathname).toBe('/');
 
-  // The session cookie survived the round-trip.
+  // The session cookie survived the round-trip AND the server still honors
+  // it: a token-less API call after returning to Send still authenticates.
+  // (Checking only the client-side cookie value wouldn't catch the server
+  // dropping cookie support — the cookie persists client-side regardless.)
   const cookie = sessionCookie(await page.context().cookies());
   expect(cookie?.value).toBe(TOKEN);
+  expect((await page.request.get('/api/files')).status()).toBe(200);
 });
