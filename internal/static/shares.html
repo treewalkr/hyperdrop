@@ -98,7 +98,8 @@
     .toast-wrap { position: fixed; top: calc(var(--header-h) + 1rem); right: 1.5rem; z-index: 9999;
                   display: flex; flex-direction: column; gap: 0.5rem; pointer-events: none; }
     .toast { background: rgba(20,20,40,0.9); border: 1px solid var(--border); border-radius: var(--radius-sm);
-             padding: 0.6rem 0.9rem; font-size: 0.82rem; max-width: 320px; border-left: 3px solid var(--accent); }
+             padding: 0.6rem 0.9rem; font-size: 0.82rem; max-width: 320px; word-break: break-all;
+             border-left: 3px solid var(--accent); }
     .toast.success { border-left-color: var(--success); }
     .toast.error { border-left-color: var(--danger); }
 
@@ -198,12 +199,35 @@
         },
 
         async copy(s) {
-          try {
-            await navigator.clipboard.writeText(s.url);
+          if (await this.copyText(s.url)) {
             this.toast('link copied', 'success');
+          } else {
+            this.toast('copy failed — long-press the link to copy', 'error');
+          }
+        },
+
+        // Copy text to the clipboard, working on the plain-HTTP LAN as well as
+        // https/localhost. navigator.clipboard is undefined outside a secure
+        // context, so fall back to a hidden textarea + execCommand('copy') —
+        // deprecated but the only option that works from http://<lan-ip>.
+        async copyText(text) {
+          if (navigator.clipboard && window.isSecureContext) {
+            try { await navigator.clipboard.writeText(text); return true; } catch (e) { /* fall through */ }
+          }
+          try {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', '');
+            ta.style.position = 'fixed';
+            ta.style.top = '-1000px';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            const ok = document.execCommand('copy');
+            document.body.removeChild(ta);
+            return ok;
           } catch (e) {
-            // Fallback: select-and-prompt won't work headless; surface the URL.
-            this.toast('copy failed — link: ' + s.url, 'error');
+            return false;
           }
         },
 
