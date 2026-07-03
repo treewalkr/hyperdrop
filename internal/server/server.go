@@ -422,9 +422,12 @@ func streamHandler(cfg cli.Config) http.HandlerFunc {
 }
 
 // serveFileContent streams file bytes with Range/206 support via
-// http.ServeContent. When attachment is true it sets Content-Disposition:
-// attachment (a forced download); when false the response is inline so the
-// bytes can be handed to a <video> element.
+// http.ServeContent. The response always carries X-Content-Type-Options:
+// nosniff. Content-Disposition is forced to attachment unless attachment is
+// false AND the file is a browser-playable video type — only that case is
+// served inline, so a <video> element can play it. Non-playable extensions
+// on the inline/stream path are still forced to attachment to prevent
+// uploaded HTML/SVG from executing as same-origin script (issue #42).
 func serveFileContent(w http.ResponseWriter, r *http.Request, cfg cli.Config, requested string, attachment bool) {
 	if requested == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "filename required"})
@@ -451,7 +454,16 @@ func serveFileContent(w http.ResponseWriter, r *http.Request, cfg cli.Config, re
 	}
 
 	name := filepath.Base(dest)
-	if attachment {
+	// Security: anything served inline must be a browser-playable type (issue
+	// #42). A non-playable extension (.html/.svg/etc.) reaching the stream
+	// path would otherwise be rendered inline with a sniffable content type,
+	// executing uploaded bytes as same-origin script. Force a download for
+	// those. attachment==true (downloadHandler) already downloads; only the
+	// inline/stream path needs the extra gate. X-Content-Type-Options:
+	// nosniff is defense-in-depth so a sniffed type can't override the
+	// disposition (slice of #47).
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if attachment || !playable(name) {
 		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", escapeFilename(name)))
 	}
 	http.ServeContent(w, r, name, stat.ModTime(), f)

@@ -171,6 +171,61 @@ func TestStream_HEAD_ReturnsMetadata(t *testing.T) {
 	}
 }
 
+// TestStream_NonPlayableHTML_ForcedAttachment closes the stored-XSS vector
+// (issue #42): a stream request for a non-playable, sniffable type such as
+// .html or .svg must be served with Content-Disposition: attachment so the
+// browser downloads the bytes instead of rendering them inline. Playable
+// video types (.mp4/.webm/.mov) stay inline so the <video> player keeps
+// working. nosniff is added as defense-in-depth (slice of #47).
+func TestStream_NonPlayableHTML_ForcedAttachment(t *testing.T) {
+	root := t.TempDir()
+	os.WriteFile(root+"/evil.html", []byte("<script>x</script>"), 0644)
+	os.WriteFile(root+"/evil.svg", []byte("<svg/>"), 0644)
+	os.WriteFile(root+"/clip.mp4", []byte("not real video bytes"), 0644)
+	cfg := cli.Config{RootDir: root, Token: "secret123"}
+	r := NewRouter(cfg)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	// Non-playable sniffable types: must be forced to attachment + nosniff.
+	for _, name := range []string{"evil.html", "evil.svg"} {
+		t.Run(name, func(t *testing.T) {
+			req, _ := http.NewRequest("GET", ts.URL+"/api/stream/"+name+"?token=secret123", nil)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				b, _ := io.ReadAll(resp.Body)
+				t.Fatalf("status: got %d, want 200. body: %s", resp.StatusCode, b)
+			}
+			cd := resp.Header.Get("Content-Disposition")
+			if !strings.HasPrefix(cd, "attachment") {
+				t.Errorf("Content-Disposition: got %q, want prefix %q", cd, "attachment")
+			}
+			if got := resp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+				t.Errorf("X-Content-Type-Options: got %q, want %q", got, "nosniff")
+			}
+		})
+	}
+
+	// Playable video: must stay inline (no attachment) so <video> works.
+	t.Run("clip.mp4_inline", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", ts.URL+"/api/stream/clip.mp4?token=secret123", nil)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+
+		if cd := resp.Header.Get("Content-Disposition"); strings.HasPrefix(cd, "attachment") {
+			t.Errorf("Content-Disposition: got %q, want inline (no attachment)", cd)
+		}
+	})
+}
+
 // TestPlayable covers the gating predicate mirrored on the client.
 func TestPlayable(t *testing.T) {
 	cases := map[string]bool{
