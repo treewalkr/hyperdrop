@@ -1316,13 +1316,14 @@
       <div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.85rem">
         <template x-for="opt in shareTTLs" :key="opt.key">
           <button class="sort-pill" :class="{ active: shareTTL === opt.key }"
+                  :data-testid="'ttl-' + opt.key"
                   @click="shareTTL = opt.key" x-text="opt.label"></button>
         </template>
       </div>
 
       <div class="modal-actions" style="justify-content:flex-start; margin-bottom:0.75rem">
         <button class="btn-danger" style="background:var(--gradient-accent);color:#fff;border-color:transparent"
-                @click="createShare()" :disabled="shareBusy"
+                @click="createShare()" :disabled="shareBusy" data-testid="share-create"
                 x-text="shareBusy ? 'Creating…' : 'Create link'"></button>
       </div>
 
@@ -1331,12 +1332,12 @@
           Active links for this file
         </div>
         <template x-for="s in shareLinks" :key="s.token">
-          <div style="display:flex; align-items:center; gap:0.5rem; padding:0.4rem 0; border-bottom:1px solid rgba(255,255,255,0.04)">
-            <span class="mono" style="flex:1; min-width:0; font-size:0.72rem; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap"
+          <div data-testid="share-link-row" style="display:flex; align-items:center; gap:0.5rem; padding:0.4rem 0; border-bottom:1px solid rgba(255,255,255,0.04)">
+            <span class="mono" data-testid="share-link-url" style="flex:1; min-width:0; font-size:0.72rem; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap"
                   x-text="s.url"></span>
             <span style="font-size:0.7rem; color:var(--text-muted)" x-text="s.expires_at ? fmtExpires(s.expires_at) : 'never'"></span>
             <button class="batch-btn" @click="copyShareUrl(s.url)" title="Copy" aria-label="Copy link">Copy</button>
-            <button class="batch-btn danger" @click="revokeShare(s.token)" title="Revoke" aria-label="Revoke link">Revoke</button>
+            <button class="batch-btn danger" data-testid="share-link-revoke" @click="revokeShare(s.token)" title="Revoke" aria-label="Revoke link">Revoke</button>
           </div>
         </template>
       </div>
