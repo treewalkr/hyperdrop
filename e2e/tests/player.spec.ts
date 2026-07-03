@@ -106,6 +106,65 @@ test('opening /player with no file shows the missing-file fallback', async ({ pa
   await expect(page.getByTestId('video')).toBeHidden();
 });
 
+// Pure-JS characterization of the escapeHtml helper defined at the top of
+// player.html's <script>. Loaded by visiting /player so the classic-script
+// function lands on window, then exercised via page.evaluate — independent of
+// the DOM rendering path.
+test('escapeHtml escapes every HTML metacharacter', async ({ page }) => {
+  await page.goto(`/player?token=${TOKEN}`);
+  const escaped = await page.evaluate(() => (window as any).escapeHtml(
+    `<a href="x" onerror='alert(1)'>&</a>`,
+  ));
+  expect(escaped).toBe('&lt;a href=&quot;x&quot; onerror=&#39;alert(1)&#39;&gt;&amp;&lt;/a&gt;');
+});
+
+// Regression guard for a reflected-XSS in the unsupported-format fallback: the
+// <p x-html="stateBody"> renders this.ext (the last dot-segment of ?file=) as
+// raw HTML, so a payload placed in that segment must be escaped to inert text.
+// `<img onerror>` is the canonical probe — innerHTML-parsed <script> does not
+// execute, but an event handler on an injected element does.
+test('reflected markup in ?file= extension is rendered inert (no XSS)', async ({ page }) => {
+  const payload = '<img src=x onerror=alert(1)>';
+  // No trailing extension: the payload itself is the last dot-segment, so
+  // this.ext === `.<img src=x onerror=alert(1)>` — the value fed to x-html.
+  const fileParam = encodeURIComponent(`evil.${payload}`);
+
+  // Record (and dismiss) any dialog so a fired alert fails the test cleanly
+  // instead of blocking the page.
+  let dialogSeen: string | null = null;
+  page.on('dialog', async (d) => {
+    dialogSeen = `${d.type()}: ${d.message()}`;
+    await d.dismiss();
+  });
+
+  await page.goto(`/player?file=${fileParam}&token=${TOKEN}`);
+
+  const fallback = page.getByTestId('player-fallback');
+  await expect(fallback).toBeVisible();
+
+  // The fallback paragraph must not contain a live element — the payload must
+  // parse as escaped text, not as markup.
+  const body = fallback.locator('p').first();
+  await expect(body.locator('img')).toHaveCount(0);
+  await expect(body.locator('[onerror]')).toHaveCount(0);
+
+  // The extension text must still visibly render (as inert, escaped text).
+  await expect(body).toContainText(payload);
+
+  expect(dialogSeen).toBeNull();
+});
+
+// The unsupported-format UI must still visibly render the extension text after
+// the escaping fix — escaping must not strip or hide the extension.
+test('unsupported fallback still visibly renders the file extension', async ({ page }) => {
+  writeFileSync(path.join(UPLOAD_DIR, 'clip.mkv'), 'not real mkv');
+
+  await page.goto(`/player?file=clip.mkv&token=${TOKEN}`);
+
+  const body = page.getByTestId('player-fallback').locator('p').first();
+  await expect(body).toContainText('.mkv');
+});
+
 // Guards the backend refactor: the stream route serves inline (no attachment
 // header) while the download route still forces attachment. Uses the request
 // API (not page.goto) because the attachment response triggers a download.
