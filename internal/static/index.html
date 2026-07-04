@@ -1118,10 +1118,40 @@
             if (!this.files.includes(f) || f.status !== 'uploading') return;
             f.status = 'done';
             f.speed = 0;
-            this.toast(f.name + ' uploaded', 'success');
+            // Folder files aggregate into one summary toast per folder (settle
+            // check in maybeFolderToast); loose files keep their per-file toast.
+            const fld = f.folderId && this.folders.find((x) => x.id === f.folderId);
+            if (fld) { fld.done++; this.maybeFolderToast(fld); }
+            else this.toast(f.name + ' uploaded', 'success');
           };
           if (elapsed >= minVisible) done();
           else setTimeout(done, minVisible - elapsed);
+        },
+
+        // Emit one summary toast per folder when its last file settles. No-op
+        // until done+failed reaches total, and idempotent via _summarized.
+        // Counting against `total` (not live children) means a cancelled/
+        // dismissed folder that loses files simply never reaches total and so
+        // never emits a spurious "uploaded" toast.
+        maybeFolderToast(fld) {
+          if (!fld || fld._summarized) return;
+          if (fld.done + fld.failed < fld.total) return;
+          fld._summarized = true;
+          if (!fld.failed) {
+            this.toast(fld.name + ' · ' + fld.total + ' file' + (fld.total > 1 ? 's' : '') + ' uploaded', 'success');
+          } else if (fld.done) {
+            this.toast(fld.name + ' · ' + fld.done + ' uploaded, ' + fld.failed + ' failed', 'error');
+          } else {
+            this.toast(fld.name + ' · ' + fld.failed + ' file' + (fld.failed > 1 ? 's' : '') + ' failed', 'error');
+          }
+        },
+
+        // Surface an upload failure. Folder files feed the per-folder summary
+        // (maybeFolderToast); loose files keep their own per-file error toast.
+        toastUploadFailure(entry, status) {
+          const fld = entry.folderId && this.folders.find((x) => x.id === entry.folderId);
+          if (fld) { fld.failed++; this.maybeFolderToast(fld); }
+          else this.toast(entry.name + ' failed' + (status ? ' (' + status + ')' : ''), 'error');
         },
 
         // Server-reported completion: the file_uploaded event fires the instant
@@ -1232,7 +1262,7 @@
           const folderId = 'f' + (++this.nextFolderId);
           const name = folderName || (items[0].rel ? items[0].rel.split('/')[0] : 'Folder');
           const entries = items.map((it) => this.makeEntry(it.file, it.rel || it.file.name, folderId));
-          this.folders.push({ id: folderId, name, expanded: true });
+          this.folders.push({ id: folderId, name, expanded: true, total: entries.length, done: 0, failed: 0, _summarized: false });
           for (const e of entries) this.files.push(e);
           for (const e of entries) this.enqueueFolderUpload(e);
           this.toast(name + ' · ' + entries.length + ' files queued', 'info');
@@ -1264,16 +1294,14 @@
           }
           if (!top.some((e) => e.isDirectory)) { this.addFiles(dataTransfer.files); return; }
 
-          const collected = [];
-          let folderName = '';
-          const walk = (entry, rel) => new Promise((resolve) => {
+          // walk() collects one directory tree into the given out[] array. rel is
+          // the '/'-separated path INCLUDING the top folder. Each top-level
+          // directory is walked into its own array so a multi-folder drop yields
+          // one folder card per directory rather than one merged card.
+          const walk = (entry, rel, out) => new Promise((resolve) => {
             if (entry.isFile) {
               entry.file(
-                (file) => {
-                  if (!folderName && rel) folderName = rel.split('/')[0];
-                  collected.push({ file, rel: rel || file.name });
-                  resolve();
-                },
+                (file) => { out.push({ file, rel: rel || file.name }); resolve(); },
                 () => resolve(),
               );
             } else if (entry.isDirectory) {
@@ -1285,7 +1313,7 @@
                 do {
                   batch = await readBatch();
                   for (const child of batch) {
-                    await walk(child, rel ? (rel + '/' + child.name) : child.name);
+                    await walk(child, rel ? (rel + '/' + child.name) : child.name, out);
                   }
                 } while (batch && batch.length);
                 resolve();
@@ -1294,13 +1322,24 @@
               resolve();
             }
           });
-          try {
-            for (const entry of top) await walk(entry, entry.name);
-          } catch (err) {
-            this.toast('folder scan failed', 'error');
-            return;
+
+          // One card per top-level directory; loose files in a mixed drop are
+          // batched and uploaded as plain files. A scan failure on one folder
+          // toasts and skips it without aborting the rest.
+          const loose = [];
+          const looseP = [];
+          for (const entry of top) {
+            if (entry.isDirectory) {
+              const collected = [];
+              try { await walk(entry, entry.name, collected); }
+              catch (e) { this.toast(entry.name + ' · folder scan failed', 'error'); continue; }
+              if (collected.length) this.intakeFolderEntries(collected, entry.name);
+            } else if (entry.isFile) {
+              looseP.push(new Promise((res) => entry.file((f) => { loose.push(f); res(); }, () => res())));
+            }
           }
-          if (collected.length) this.intakeFolderEntries(collected, folderName);
+          await Promise.all(looseP);
+          if (loose.length) this.addFiles(loose);
         },
 
         // ---- folder upload queue (concurrency cap) ----
@@ -1376,14 +1415,14 @@
               this.finalizeUpload(entry);
             } else {
               entry.status = 'error';
-              this.toast(entry.name + ' failed (' + xhr.status + ')', 'error');
+              this.toastUploadFailure(entry, xhr.status);
             }
           };
           xhr.onerror = () => {
             entry.xhr = null;
             if (onDone) onDone();
             entry.status = 'error';
-            this.toast(entry.name + ' failed', 'error');
+            this.toastUploadFailure(entry);
           };
           xhr.onabort = () => { entry.xhr = null; if (onDone) onDone(); };
 

@@ -183,6 +183,36 @@ test('a folder upload shows one aggregate card and nests files on the Files page
   await expect(page.locator('[data-testid="file-name"]', { hasText: 'sunset.jpg' })).toBeVisible();
 });
 
+test('a folder upload summarises into one success toast, not one per file', async ({ page }) => {
+  await page.goto(`/?token=${TOKEN}`);
+
+  await uploadFolderViaComponent(page, 'album', [
+    { rel: 'a.txt', body: 'a' },
+    { rel: 'b.txt', body: 'b' },
+    { rel: 'sub/c.txt', body: 'c' },
+  ]);
+
+  // Wait for the folder card to finish, then assert exactly ONE success toast
+  // — the summary "album · 3 files uploaded" — rather than three per-file ones.
+  await expect(page.locator('[data-testid="folder-item"].state-done')).toBeVisible({ timeout: 5000 });
+  await expect(page.getByTestId('toasts')).toContainText('album · 3 files uploaded');
+  await expect(page.locator('[data-testid="toasts"] .toast.success')).toHaveCount(1);
+});
+
+test('dropping two folders yields two separate aggregate cards', async ({ page }) => {
+  await page.goto(`/?token=${TOKEN}`);
+
+  // A headless browser can't synthesise a real multi-folder drag, so drive the
+  // production intake twice — the per-folder grouping the refactored drop
+  // handler now performs resolves to exactly this sequence of calls. Each call
+  // must produce its own card with its own name and id.
+  await uploadFolderViaComponent(page, 'FolderA', [{ rel: 'a1.txt', body: 'a1' }]);
+  await uploadFolderViaComponent(page, 'FolderB', [{ rel: 'b1.txt', body: 'b1' }]);
+
+  await expect(page.getByTestId('folder-item')).toHaveCount(2);
+  await expect(page.getByTestId('folder-name')).toHaveText(['FolderA', 'FolderB']);
+});
+
 test('a folder upload whose relative path escapes the root is rejected by the server', async ({ page }) => {
   await page.goto(`/?token=${TOKEN}`);
 
