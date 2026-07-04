@@ -1262,7 +1262,7 @@
           const folderId = 'f' + (++this.nextFolderId);
           const name = folderName || (items[0].rel ? items[0].rel.split('/')[0] : 'Folder');
           const entries = items.map((it) => this.makeEntry(it.file, it.rel || it.file.name, folderId));
-          this.folders.push({ id: folderId, name, expanded: true, total: entries.length, done: 0, failed: 0, _summarized: false });
+          this.folders.push({ id: folderId, name, expanded: false, total: entries.length, done: 0, failed: 0, _summarized: false });
           for (const e of entries) this.files.push(e);
           for (const e of entries) this.enqueueFolderUpload(e);
           this.toast(name + ' · ' + entries.length + ' files queued', 'info');

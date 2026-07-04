@@ -160,8 +160,12 @@ test('a folder upload shows one aggregate card and nests files on the Files page
   await expect(page.getByTestId('folder-item')).toHaveCount(1);
   await expect(page.getByTestId('folder-name')).toHaveText('vacation');
 
-  // The aggregate card reaches done; its child rows render underneath.
+  // The card starts collapsed so a busy upload list stays compact.
+  await expect(page.getByTestId('folder-children')).toHaveCount(0);
+
+  // The aggregate card reaches done; expanding it reveals its child rows.
   await expect(page.locator('[data-testid="folder-item"].state-done')).toBeVisible({ timeout: 5000 });
+  await page.getByTestId('folder-chevron').click();
   await expect(page.getByTestId('folder-children').getByTestId('file-item')).toHaveCount(3);
 
   // Files landed nested on disk.
