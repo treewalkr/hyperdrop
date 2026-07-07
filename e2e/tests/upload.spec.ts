@@ -9,8 +9,16 @@ import { TOKEN, UPLOAD_DIR } from '../lib/config.mjs';
 // launch script and playwright.config.ts. The first page request sets the
 // session cookie; the token is only needed for that initial navigation.
 
-// Every test starts from an empty upload root.
-test.beforeEach(() => wipeUploads());
+// Every test starts from an empty upload root and a clean persisted upload
+// list. The store is cleared once here, up front, so cross-test leakage from
+// the localStorage persistence feature can't seed a test with another test's
+// rows; within-test reloads (used by the persistence specs) still preserve
+// state written during the test body.
+test.beforeEach(async ({ page }) => {
+  wipeUploads();
+  await page.goto(`/?token=${TOKEN}`);
+  await page.evaluate(() => { try { localStorage.clear(); } catch (e) {} });
+});
 // Drop the fixture temp dirs so the suite doesn't litter $TMPDIR across runs.
 test.afterAll(() => cleanupFixtureDirs());
 
@@ -253,6 +261,79 @@ test('re-uploading an existing name renames it and reconciles the card', async (
   // Both files survive on disk; the original is untouched (no overwrite).
   expect(readFileSync(path.join(UPLOAD_DIR, 'dupe.txt'), 'utf8')).toBe('original');
   expect(readFileSync(path.join(UPLOAD_DIR, 'dupe (1).txt'), 'utf8')).toBe('new');
+});
+
+// =============================================================================
+// Persistence + retry. The Send page is a full-page-load route, so without
+// persistence the upload list is wiped on every refresh or Send→Files→Send.
+// localStorage now rehydrates finished/interrupted rows; in-flight rows (whose
+// browser File is gone) surface as 'interrupted'; a transient 5xx is retried.
+// =============================================================================
+
+test('completed uploads persist across a page reload', async ({ page }) => {
+  await page.goto(`/?token=${TOKEN}`);
+  await page.getByTestId('file-input').setInputFiles(fixture('keep.txt', 'persist me'));
+  await expect(page.locator('.done-label')).toBeVisible({ timeout: 5000 });
+
+  await page.reload();
+
+  // The finished row reappears as an inert done card after rehydrate.
+  await expect(page.getByTestId('file-item')).toHaveCount(1);
+  await expect(page.getByTestId('file-name')).toHaveText('keep.txt');
+  await expect(page.locator('.done-label')).toBeVisible();
+});
+
+test('an in-flight upload surfaces as interrupted after a reload', async ({ page }) => {
+  // Model a prior session that left an upload mid-flight in the persisted
+  // store: seed the store before the page loads (addInitScript runs before any
+  // app script), so rehydrate() reads it on init. The source File is gone, so
+  // it cannot resume and must render as a terminal 'interrupted' row.
+  await page.addInitScript(() => {
+    localStorage.setItem('hyperdrop:send-state', JSON.stringify({
+      v: 1, nextId: 5, nextFolderId: 0,
+      files: [{
+        id: 1, name: 'stuck.bin', relPath: '', folderId: null,
+        size: 1024, ext: 'bin', category: 'file',
+        progress: 42, status: 'uploading', startedAt: Date.now(),
+      }],
+      folders: [],
+    }));
+  });
+  await page.goto(`/?token=${TOKEN}`);
+
+  await expect(page.getByTestId('file-item')).toHaveCount(1);
+  await expect(page.getByTestId('file-name')).toHaveText('stuck.bin');
+  await expect(page.locator('.interrupted-label')).toBeVisible();
+});
+
+test('Clear uploaded removes completed rows', async ({ page }) => {
+  await page.goto(`/?token=${TOKEN}`);
+  await page.getByTestId('file-input').setInputFiles(fixture('one.txt', 'one'));
+  await expect(page.locator('.done-label')).toBeVisible({ timeout: 5000 });
+
+  await expect(page.getByTestId('clear-uploaded')).toBeVisible();
+  await page.getByTestId('clear-uploaded').click();
+
+  await expect(page.getByTestId('file-item')).toHaveCount(0);
+  await expect(page.getByTestId('clear-uploaded')).toHaveCount(0);
+});
+
+test('a transient 5xx is retried and the upload ultimately succeeds', async ({ page }) => {
+  await page.goto(`/?token=${TOKEN}`);
+  let attempts = 0;
+  await page.route('**/api/upload*', async (route) => {
+    attempts++;
+    // Fail the first attempt with a transient 503; let the retry reach the
+    // real server.
+    if (attempts === 1) await route.fulfill({ status: 503, body: '' });
+    else await route.continue();
+  });
+  await page.getByTestId('file-input').setInputFiles(fixture('retry.txt', 'retry body'));
+
+  // First attempt 503s; the retry (after ~1s backoff) reaches the server and
+  // completes.
+  await expect(page.locator('.done-label')).toBeVisible({ timeout: 10000 });
+  expect(attempts).toBeGreaterThanOrEqual(2);
 });
 
 
