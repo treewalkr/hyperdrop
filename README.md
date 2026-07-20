@@ -32,6 +32,17 @@ every connected browser in sync in real time.
 go install github.com/treewalkr/hyperdrop/cmd/hyperdrop@latest
 ```
 
+`go install` places the binary in `$(go env GOPATH)/bin` (usually `~/go/bin`).
+If `hyperdrop: command not found`, add that directory to your `PATH`:
+
+```bash
+# add to ~/.bashrc (Linux) or ~/.zshrc / ~/.bash_profile (macOS)
+export PATH="$PATH:$(go env GOPATH)/bin"
+```
+
+Then reload your shell (`source ~/.bashrc`) or open a new terminal, and verify
+with `which hyperdrop`.
+
 **Pre-built binary** from the [releases page](https://github.com/treewalkr/hyperdrop/releases):
 
 ```bash
